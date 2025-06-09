@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+boto3
+botocore
+pydantic
+python-multipart
+cors

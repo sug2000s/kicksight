@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: kicksight-frontend
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: kicksight-backend
+    restart: unless-stopped
+
+  nginx:
+    build: ./nginx
+    container_name: kicksight-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
