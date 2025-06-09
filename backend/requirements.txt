@@ -6,3 +6,4 @@ botocore
 pydantic
 python-multipart
 cors
+langchain-aws
