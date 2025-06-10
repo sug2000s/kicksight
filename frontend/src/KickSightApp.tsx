@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import types
-import type {Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse} from './types';
+import type { Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse } from './types';
 
 // Import icons
 import {
-    MenuIcon, PlusIcon, SettingsIcon, SendIcon, HeartIcon,
-    RobotIcon, CloseIcon, UserIcon
-} from './components/icons';
+    MenuIcon, PlusIcon, SendIcon, HeartIcon,
+    RobotIcon, CloseIcon
+} from './components/icons/index';
 
 // Import components
 import Notification from './components/Notification';
@@ -36,22 +36,19 @@ const KickSightApp: React.FC = () => {
     const [showNotification, setShowNotification] = useState(false);
     const [notificationMessage, setNotificationMessage] = useState('');
     const [notificationDescription, setNotificationDescription] = useState('');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [iframeError, setIframeError] = useState(false);
 
-    // useChat 훅 사용 - Supervisor Agent로 고정
+    // useChat 훅 사용 - Supervisor Agent 전용
     const {
         messages,
         sessionId,
         isProcessing,
         currentReasoningStep,
-        currentStepIcon,
         sendMessage,
         clearSession,
         newSession,
         setMessages
     } = useChat({
-        mode: 'Supervisor Agent',
         onError: (error: Error) => {
             console.error('Chat error:', error);
             setNotificationMessage('오류가 발생했습니다');
@@ -61,9 +58,8 @@ const KickSightApp: React.FC = () => {
         }
     });
 
-    // 백엔드 연결 상태 확인을 위한 로그
+    // 백엔드 연결 상태 확인
     useEffect(() => {
-        console.log('Current mode: Supervisor Agent (fixed)');
         console.log('Session ID:', sessionId);
         console.log('API URL:', import.meta.env.VITE_API_URL || 'http://localhost:8000');
     }, [sessionId]);
@@ -83,15 +79,10 @@ const KickSightApp: React.FC = () => {
         if (!inputMessage.trim() || isProcessing) return;
 
         try {
-            console.log('Sending message:', inputMessage);
             await sendMessage(inputMessage);
             setInputMessage('');
         } catch (error) {
             console.error('Failed to send message:', error);
-            setNotificationMessage('메시지 전송 실패');
-            setNotificationDescription(`오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-            setShowNotification(true);
-            setTimeout(() => setShowNotification(false), 5000);
         }
     };
 
@@ -122,13 +113,11 @@ const KickSightApp: React.FC = () => {
     const isValidUrl = (url: string): boolean => {
         try {
             const urlObj = new URL(url);
-            // 현재 앱의 URL과 같은지 확인
             const currentUrl = new URL(window.location.href);
             if (urlObj.origin === currentUrl.origin && urlObj.pathname === currentUrl.pathname) {
                 console.error('iframe URL is same as current app URL');
                 return false;
             }
-            // http 또는 https 프로토콜인지 확인
             return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
         } catch {
             return false;
@@ -138,7 +127,6 @@ const KickSightApp: React.FC = () => {
     const renderQuickSightVisualization = () => {
         if (!currentVisualization) return null;
 
-        // URL 유효성 검사
         if (!isValidUrl(currentVisualization.url)) {
             return (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
@@ -212,8 +200,6 @@ const KickSightApp: React.FC = () => {
                                     console.log('iframe loaded successfully');
                                     setIframeError(false);
                                 }}
-                                // sandbox 속성을 제거하거나 최소화
-                                // QuickSight가 필요로 하는 권한만 부여
                                 referrerPolicy="no-referrer-when-downgrade"
                             />
                             <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 px-2 py-1 rounded text-xs text-gray-600 shadow-sm">
@@ -334,7 +320,6 @@ const KickSightApp: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         if (content.chart_url) {
-                                            // URL 유효성 검사
                                             if (!isValidUrl(content.chart_url)) {
                                                 setNotificationMessage('오류');
                                                 setNotificationDescription('유효하지 않은 차트 URL입니다.');
@@ -350,12 +335,7 @@ const KickSightApp: React.FC = () => {
                                             };
                                             setCurrentVisualization(iframeResponse);
                                             setShowVisualization(true);
-                                            setIframeError(false); // 에러 상태 초기화
-                                        } else {
-                                            setNotificationMessage('오류');
-                                            setNotificationDescription('차트 URL이 제공되지 않았습니다.');
-                                            setShowNotification(true);
-                                            setTimeout(() => setShowNotification(false), 3000);
+                                            setIframeError(false);
                                         }
                                     }}
                                     className="flex items-center space-x-1 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
@@ -406,7 +386,6 @@ const KickSightApp: React.FC = () => {
                                     </div>
                                     <LoadingIndicator
                                         message={message.content as string || currentReasoningStep}
-                                        Icon={currentStepIcon || undefined}
                                     />
                                 </div>
                             </div>
@@ -432,15 +411,6 @@ const KickSightApp: React.FC = () => {
                                             <div className="text-red-600 bg-red-50 border border-red-200 rounded p-3">
                                                 <p className="font-semibold">오류 발생:</p>
                                                 <p>{message.content.message || JSON.stringify(message.content)}</p>
-                                            </div>
-                                        )}
-                                        {/* 기타 객체 타입 처리 */}
-                                        {!isSupervisorAgentResponse(message.content) && !isError(message.content) && (
-                                            <div className="text-gray-600">
-                                                <p className="font-medium mb-2">응답 데이터:</p>
-                                                <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                                                    {JSON.stringify(message.content, null, 2)}
-                                                </pre>
                                             </div>
                                         )}
                                     </div>
@@ -507,33 +477,6 @@ const KickSightApp: React.FC = () => {
                             <PlusIcon />
                             <span>새 대화</span>
                         </button>
-                        <div className="relative">
-                            <button
-                                onClick={() => setDropdownOpen(!dropdownOpen)}
-                                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
-                            >
-                                <SettingsIcon />
-                            </button>
-                            {dropdownOpen && (
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                                    <button className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2">
-                                        <UserIcon />
-                                        <span>프로필</span>
-                                    </button>
-                                    <button className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2">
-                                        <SettingsIcon />
-                                        <span>설정</span>
-                                    </button>
-                                    <button
-                                        onClick={clearSession}
-                                        className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2 text-red-600"
-                                    >
-                                        <CloseIcon />
-                                        <span>세션 초기화</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </div>
             </header>
@@ -584,9 +527,6 @@ const KickSightApp: React.FC = () => {
                                                 <p className="text-gray-500 mb-6">Supervisor Agent와 대화를 시작해보세요!</p>
                                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                                                     <p className="text-sm text-blue-700">
-                                                        현재 모드: <span className="font-semibold">Supervisor Agent</span>
-                                                    </p>
-                                                    <p className="text-xs text-blue-600 mt-1">
                                                         DB Agent와 QuickSight Agent를 통합하여 분석을 수행합니다.
                                                     </p>
                                                 </div>
@@ -672,6 +612,6 @@ const KickSightApp: React.FC = () => {
             </div>
         </div>
     );
-}
+};
 
 export default KickSightApp;

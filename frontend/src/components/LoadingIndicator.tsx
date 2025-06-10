@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 
 interface LoadingIndicatorProps {
     message?: string;
-    Icon?: React.FC;
 }
 
 const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message = '처리 중...' }) => {

@@ -2,7 +2,7 @@
 export interface Message {
     id: number;
     type: 'user' | 'bot' | 'bot-reasoning';
-    content: string | AnalysisResponse;
+    content: string | SupervisorAgentResponse | ErrorResponse;
     timestamp: string;
 }
 
@@ -12,68 +12,52 @@ export interface Conversation {
     messages: Message[];
 }
 
-export interface VOCAnalysisResponse {
-    analysis_type: string;
-    period: string;
-    total_voc_count: number;
-    categories: {
-        "주요 카테고리": string[];
-        "분석 결과": Record<string, string>;
-    };
-    insights: string[];
-    recommendation: string;
+// Supervisor Agent 응답 타입
+export interface SupervisorAgentResponse {
+    // DB Agent 관련 필드
+    query_id?: string;
+    query?: string;
+    explanation?: string;
+    sample_analysis?: string;
+    csv_url?: string;
+
+    // QuickSight Agent 관련 필드
+    chart_url?: string;
+    visualization_analysis_result?: string;
 }
 
-export interface VOCTableResponse {
-    data_type: string;
-    columns: string[];
-    rows: Array<Array<string | number>>;
-    total_count: number;
-    period: string;
+// QuickSight iframe 응답 타입
+export interface QuickSightIFrameResponse {
+    type: 'quicksight_iframe';
+    url: string;
+    title?: string;
 }
 
-export interface PieChartResponse {
-    chart_type: string;
-    title: string;
-    data: {
-        labels: string[];
-        values: number[];
-        percentages: string[];
-    };
-    total_count: number;
-    insights: string[];
-}
-
-export interface LineChartResponse {
-    analysis_type: string;
-    chart_type: string;
-    period: string;
-    categories: string[];
-    time_series_data: Record<string, Array<{ hour: string; value: number }>>;
-    peak_hours: Record<string, string>;
-    insights: string[];
-}
-
+// 에러 응답 타입
 export interface ErrorResponse {
     message: string;
 }
 
-// AnalysisResponse 타입 업데이트
-export type AnalysisResponse = VOCAnalysisResponse | VOCTableResponse | PieChartResponse | LineChartResponse | ErrorResponse | QuickSightIFrameResponse;
+// 분석 응답 통합 타입
+export type AnalysisResponse = SupervisorAgentResponse | QuickSightIFrameResponse | ErrorResponse;
 
-export interface ReasoningStep {
-    text: string;
-    duration: number;
-    icon: React.FC;
+// 스트리밍 이벤트 타입 (useChat에서 사용)
+export interface StreamEvent {
+    type: 'stream_start' | 'reasoning' | 'agent_start' | 'knowledge_base' |
+        'query_execution' | 'visualization_created' | 'error' | 'final_response' | string;
+    message?: string;
+    content?: string;
+    display_name?: string;
+    agent?: string;
+    references_count?: number;
+    query_id?: string;
+    chart_type?: string;
+    result?: any;
+    success?: boolean;
+    timestamp?: string;
 }
 
-// types/index.ts에 추가
-export interface AppConfig {
-    apiUrl: string;
-    debug: boolean;
-    mode: 'development' | 'production';
-}
-
+// 채팅 상태 관리 타입
 export interface ChatState {
     conversations: Conversation[];
     activeConversationId: number;
@@ -81,24 +65,9 @@ export interface ChatState {
     isConnected: boolean;
 }
 
-// ── near your other type-guard imports or just above KickSightApp ──
-export interface SupervisorAgentResponse {
-    query_id?: string;
-    query?: string;
-    explanation?: string;
-    sample_analysis?: string;
-    csv_url?: string;
-    chart_url?: string;
-    visualization_analysis_result?: string;
+// 앱 설정 타입
+export interface AppConfig {
+    apiUrl: string;
+    debug: boolean;
+    mode: 'development' | 'production';
 }
-
-// types/index.ts에 추가할 타입들
-
-// 기존 AnalysisResponse 타입에 추가
-export interface QuickSightIFrameResponse {
-    type: 'quicksight_iframe';
-    url: string;
-    title?: string;
-}
-
-
