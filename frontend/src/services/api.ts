@@ -40,6 +40,18 @@ export interface AgentsConfig {
     };
 }
 
+// Streaming response types
+export interface StreamEvent {
+    type: 'stream_start' | 'reasoning' | 'agent_start' | 'final_response';
+    message?: string;
+    content?: string;
+    agent?: string;
+    display_name?: string;
+    result?: any;
+    timestamp: string;
+    success?: boolean;
+}
+
 class ApiService {
     private baseUrl: string;
 
@@ -118,7 +130,59 @@ class ApiService {
         }
     }
 
-    // 스트리밍 지원을 위한 메서드 (추후 구현)
+    // Supervisor Agent를 위한 스트리밍 메서드
+    async sendMessageStreamTrace(
+        request: { message: string; mode: string; session_id?: string },
+        onEvent: (event: StreamEvent) => void
+    ): Promise<void> {
+        try {
+            const response = await fetch(`${this.baseUrl}${API_CONFIG.ENDPOINTS.CHAT_STREAM_TRACE}`, {
+                method: 'POST',
+                headers: {
+                    ...DEFAULT_HEADERS,
+                    'Accept': 'text/event-stream',
+                },
+                body: JSON.stringify(request),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) return;
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process complete SSE messages
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            onEvent(data);
+                        } catch (error) {
+                            console.error('Error parsing SSE data:', error);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error in streaming:', error);
+            throw error;
+        }
+    }
+
+    // 기존 스트리밍 메서드 (QuickSight Agent용)
     async sendMessageStream(request: ChatRequest, onChunk: (chunk: string) => void): Promise<void> {
         try {
             const response = await fetch(`${this.baseUrl}${API_CONFIG.ENDPOINTS.CHAT_STREAM}`, {

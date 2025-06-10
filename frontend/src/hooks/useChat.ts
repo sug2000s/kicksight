@@ -1,8 +1,7 @@
 // hooks/useChat.ts
 import { useState, useCallback, useEffect } from 'react';
-import { apiService, ChatRequest } from '../services/api';
+import { apiService, ChatRequest, StreamEvent } from '../services/api';
 import type { Message, AnalysisResponse } from '../types';
-import { reasoningSteps } from '../data/mockData';
 
 interface UseChatOptions {
     sessionId?: string;
@@ -55,24 +54,6 @@ export const useChat = (options: UseChatOptions = {}) => {
         }
     };
 
-    const determineQueryType = (message: string): string => {
-        if (message.includes('분석')) return 'analysis';
-        if (message.includes('테이블')) return 'table';
-        if (message.includes('원형')) return 'pieChart';
-        if (message.includes('시간대')) return 'lineChart';
-        return 'default';
-    };
-
-    const simulateReasoningSteps = async (queryType: string) => {
-        const steps = reasoningSteps[queryType] || reasoningSteps.default;
-
-        for (const step of steps) {
-            setCurrentReasoningStep(step.text);
-            setCurrentStepIcon(() => step.icon);
-            await new Promise(resolve => setTimeout(resolve, step.duration));
-        }
-    };
-
     const sendMessage = useCallback(async (message: string): Promise<{
         response: AnalysisResponse | string;
         responseType: string;
@@ -91,51 +72,110 @@ export const useChat = (options: UseChatOptions = {}) => {
             };
             setMessages(prev => [...prev, userMessage]);
 
-            // 추론 단계 메시지 추가
-            const reasoningMessage: Message = {
-                id: Date.now() + 0.5,
-                type: 'bot-reasoning',
-                content: '',
-                timestamp: new Date().toISOString()
-            };
-            setMessages(prev => [...prev, reasoningMessage]);
+            // Supervisor Agent 모드인 경우 스트리밍 사용
+            if (options.mode === 'Supervisor Agent') {
+                // 추론 단계 메시지 추가
+                const reasoningMessage: Message = {
+                    id: Date.now() + 0.5,
+                    type: 'bot-reasoning',
+                    content: '',
+                    timestamp: new Date().toISOString()
+                };
+                setMessages(prev => [...prev, reasoningMessage]);
 
-            // 쿼리 타입 결정 및 추론 단계 시뮬레이션
-            const queryType = determineQueryType(message);
-            await simulateReasoningSteps(queryType);
+                return new Promise((resolve, reject) => {
+                    let finalResponse: any = null;
 
-            // API 요청 준비
-            const chatRequest: ChatRequest = {
-                message,
-                session_id: sessionId || undefined,
-                mode: options.mode || 'QuickSight Mocking Agent',
-                agent_config: agentsConfig?.quicksight_agent
-            };
-            console.log('API Request:', chatRequest);
-            // API 호출
-            const response = await apiService.sendMessage(chatRequest);
+                    apiService.sendMessageStreamTrace(
+                        {
+                            message,
+                            mode: options.mode,
+                            session_id: sessionId || undefined
+                        },
+                        (event: StreamEvent) => {
+                            console.log('Stream event:', event);
 
-            // 세션 ID 업데이트
-            if (!sessionId && response.session_id) {
-                setSessionId(response.session_id);
+                            switch (event.type) {
+                                case 'stream_start':
+                                    setCurrentReasoningStep(event.message || '분석을 시작합니다...');
+                                    break;
+
+                                case 'reasoning':
+                                    if (event.content) {
+                                        setCurrentReasoningStep(event.content.split('\n')[0]);
+                                    }
+                                    break;
+
+                                case 'agent_start':
+                                    const agentName = event.display_name || event.agent || '에이전트';
+                                    setCurrentReasoningStep(`${agentName} ${event.message || '호출 중...'}`);
+                                    break;
+
+                                case 'final_response':
+                                    finalResponse = event.result;
+                                    if (event.success) {
+                                        // 최종 응답 처리
+                                        const botMessage: Message = {
+                                            id: Date.now() + 1,
+                                            type: 'bot',
+                                            content: event.result?.data || event.result,
+                                            timestamp: event.timestamp
+                                        };
+
+                                        setMessages(prev =>
+                                            prev.filter(msg => msg.type !== 'bot-reasoning').concat(botMessage)
+                                        );
+
+                                        resolve({
+                                            response: event.result?.data || event.result,
+                                            responseType: event.result?.type || 'text'
+                                        });
+                                    } else {
+                                        reject(new Error('Analysis failed'));
+                                    }
+                                    break;
+                            }
+                        }
+                    ).catch(error => {
+                        console.error('Streaming error:', error);
+                        reject(error);
+                    }).finally(() => {
+                        setIsProcessing(false);
+                        setCurrentReasoningStep('');
+                    });
+                });
+
+            } else {
+                // QuickSight Mocking Agent 모드 - 기존 로직 사용
+                const chatRequest: ChatRequest = {
+                    message,
+                    session_id: sessionId || undefined,
+                    mode: options.mode || 'QuickSight Mocking Agent',
+                    agent_config: agentsConfig?.quicksight_agent
+                };
+
+                const response = await apiService.sendMessage(chatRequest);
+
+                // 세션 ID 업데이트
+                if (!sessionId && response.session_id) {
+                    setSessionId(response.session_id);
+                }
+
+                // 봇 메시지 추가
+                const botMessage: Message = {
+                    id: Date.now() + 1,
+                    type: 'bot',
+                    content: response.response,
+                    timestamp: response.timestamp
+                };
+
+                setMessages(prev => [...prev, botMessage]);
+
+                return {
+                    response: response.response,
+                    responseType: response.response_type
+                };
             }
-
-            // 봇 메시지 추가 (reasoning 메시지 제거)
-            const botMessage: Message = {
-                id: Date.now() + 1,
-                type: 'bot',
-                content: response.response,
-                timestamp: response.timestamp
-            };
-
-            setMessages(prev =>
-                prev.filter(msg => msg.type !== 'bot-reasoning').concat(botMessage)
-            );
-
-            return {
-                response: response.response,
-                responseType: response.response_type
-            };
 
         } catch (error) {
             console.error('Error sending message:', error);
@@ -164,9 +204,11 @@ export const useChat = (options: UseChatOptions = {}) => {
             };
 
         } finally {
-            setIsProcessing(false);
-            setCurrentReasoningStep('');
-            setCurrentStepIcon(null);
+            if (options.mode !== 'Supervisor Agent') {
+                setIsProcessing(false);
+                setCurrentReasoningStep('');
+                setCurrentStepIcon(null);
+            }
         }
     }, [sessionId, isProcessing, options, agentsConfig]);
 

@@ -287,13 +287,6 @@ async def get_agents_config():
     }
 
 
-@app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
-    """스트리밍 채팅 엔드포인트 (추가 구현 필요)"""
-    # TODO: 스트리밍 응답 구현
-    pass
-
-
 import boto3
 import json
 import asyncio
@@ -301,6 +294,7 @@ from typing import Dict, Any, AsyncGenerator
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 
@@ -352,11 +346,18 @@ class BedrockClientWithTrace:
 
                             # 어떤 에이전트를 호출하는지 추적
                             if "invocationInput" in orch_trace:
+                                inv_input = orch_trace["invocationInput"]
+                                agent_name = ""
+
+                                # Action Group 이름 추출
+                                if "actionGroupInvocationInput" in inv_input:
+                                    agent_name = inv_input["actionGroupInvocationInput"].get("actionGroupName", "")
+
                                 yield {
                                     "type": "agent_invocation",
                                     "timestamp": datetime.now().isoformat(),
-                                    "agent": orch_trace.get("modelInvocationInput", {}).get("actionGroup", ""),
-                                    "input": orch_trace["invocationInput"].get("actionGroupInvocationInput", {})
+                                    "agent": agent_name,
+                                    "input": inv_input
                                 }
 
                             # 에이전트 응답 추적
@@ -388,12 +389,15 @@ class BedrockClientWithTrace:
                                 "content": chunk_text
                             }
 
+            # 최종 응답 파싱
+            parsed_response = self._parse_agent_response(full_response)
+
             # 최종 응답
             yield {
                 "type": "final_response",
                 "timestamp": datetime.now().isoformat(),
                 "content": full_response,
-                "parsed": self._parse_agent_response(full_response)
+                "parsed": parsed_response
             }
 
         except Exception as e:
@@ -414,9 +418,68 @@ class BedrockClientWithTrace:
 
     @staticmethod
     def _parse_agent_response(full_response: str) -> Dict[str, Any]:
-        """기존 파싱 로직 재사용"""
-        # 기존 _parse_agent_response 로직과 동일
-        pass
+        """에이전트 응답 파싱 - BedrockClient의 파싱 로직 재사용"""
+        try:
+            if full_response.strip():
+                json_text = full_response.strip()
+
+                # JSON 코드 블록 추출
+                if '```json' in json_text:
+                    json_start = json_text.find('```json') + 7
+                    json_end = json_text.find('```', json_start)
+                    if json_end > json_start:
+                        json_text = json_text[json_start:json_end].strip()
+
+                # 직접 JSON 파싱 시도
+                if (json_text.startswith('{') and json_text.endswith('}')) or \
+                        (json_text.startswith('[') and json_text.endswith(']')):
+                    parsed_response = json.loads(json_text)
+                    return {
+                        "success": True,
+                        "response_type": "json",
+                        "data": parsed_response,
+                        "raw_text": full_response
+                    }
+                else:
+                    # JSON 패턴 찾기
+                    json_pattern = r'\{(.|\n)*?\}'
+                    json_matches = re.findall(json_pattern, full_response)
+                    if json_matches:
+                        for match in sorted(json_matches, key=len, reverse=True):
+                            try:
+                                parsed_response = json.loads('{' + match + '}')
+                                return {
+                                    "success": True,
+                                    "response_type": "json",
+                                    "data": parsed_response,
+                                    "raw_text": full_response
+                                }
+                            except Exception:
+                                continue
+
+                    # JSON 파싱 실패시 텍스트로 반환
+                    return {
+                        "success": True,
+                        "response_type": "text",
+                        "data": full_response,
+                        "raw_text": full_response
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": "Empty response from agent",
+                    "data": None,
+                    "raw_text": ""
+                }
+        except json.JSONDecodeError as e:
+            print(f"⚠️ JSON parsing failed: {str(e)}")
+            return {
+                "success": True,
+                "response_type": "text",
+                "data": full_response,
+                "raw_text": full_response,
+                "parse_error": str(e)
+            }
 
 
 # FastAPI 엔드포인트 수정
@@ -429,12 +492,12 @@ async def chat_stream_with_trace(request: ChatRequest):
             session_id = request.session_id or str(uuid.uuid4())
             bedrock_trace_client = BedrockClientWithTrace()
 
-            # 초기 메시지
+            # 초기 메시지 - ensure_ascii=False로 한글 인코딩 해결
             yield f"data: {json.dumps({
                 'type': 'stream_start',
                 'message': 'Supervisor Agent 분석을 시작합니다...',
                 'timestamp': datetime.now().isoformat()
-            })}\n\n"
+            }, ensure_ascii=False)}\n\n"
 
             # Supervisor Agent 호출 with trace
             async for trace_event in bedrock_trace_client.supervisor_agent_invoke_with_trace(
@@ -445,12 +508,23 @@ async def chat_stream_with_trace(request: ChatRequest):
                 if trace_event["type"] == "agent_invocation":
                     # 에이전트 호출 시작
                     agent_name = trace_event.get("agent", "Unknown Agent")
+
+                    # 에이전트 이름 매핑
+                    display_name = agent_name
+                    if "refinement" in agent_name.lower():
+                        display_name = "Query Refinement Agent"
+                    elif "db" in agent_name.lower() or "database" in agent_name.lower():
+                        display_name = "Database Agent"
+                    elif "quicksight" in agent_name.lower() or "visualization" in agent_name.lower():
+                        display_name = "QuickSight Agent"
+
                     yield f"data: {json.dumps({
                         'type': 'agent_start',
                         'agent': agent_name,
-                        'message': f'{agent_name} 호출 중...',
+                        'display_name': display_name,
+                        'message': f'{display_name} 호출 중...',
                         'timestamp': trace_event['timestamp']
-                    })}\n\n"
+                    }, ensure_ascii=False)}\n\n"
 
                 elif trace_event["type"] == "reasoning":
                     # 추론 과정
@@ -458,7 +532,7 @@ async def chat_stream_with_trace(request: ChatRequest):
                         'type': 'reasoning',
                         'content': trace_event['rationale'],
                         'timestamp': trace_event['timestamp']
-                    })}\n\n"
+                    }, ensure_ascii=False)}\n\n"
 
                 elif trace_event["type"] == "agent_response":
                     # 에이전트 응답
@@ -472,29 +546,60 @@ async def chat_stream_with_trace(request: ChatRequest):
                             'references_count': len(references),
                             'message': f'Knowledge Base에서 {len(references)}개의 참조를 찾았습니다.',
                             'timestamp': trace_event['timestamp']
-                        })}\n\n"
+                        }, ensure_ascii=False)}\n\n"
 
                     # Action Group 실행 결과 (다른 에이전트 호출)
                     elif "actionGroupInvocationOutput" in observation:
                         action_output = observation["actionGroupInvocationOutput"]
+                        action_name = action_output.get('actionGroupName', '')
+
                         yield f"data: {json.dumps({
                             'type': 'action_complete',
-                            'action': action_output.get('actionGroupName', ''),
-                            'message': '에이전트 작업 완료',
-                            'timestamp': trace_event['timestamp']
-                        })}\n\n"
+                            'action': action_name,
+                            'message': f'{action_name} 작업 완료',
+                            'timestamp': trace_event['timestamp'],
+                            'result_preview': action_output.get('text', '')[:200] + '...' if action_output.get('text') else ''
+                        }, ensure_ascii=False)}\n\n"
 
                 elif trace_event["type"] == "response_chunk":
-                    # 응답 청크는 누적하되 주기적으로만 전송
-                    pass  # 또는 필요시 활성화
+                    # 응답 청크는 주기적으로 전송 (옵션)
+                    # 필요시 아래 주석 해제
+                    # yield f"data: {json.dumps({
+                    #     'type': 'progress',
+                    #     'message': '응답 생성 중...',
+                    #     'timestamp': trace_event['timestamp']
+                    # }, ensure_ascii=False)}\n\n"
+                    pass
 
                 elif trace_event["type"] == "final_response":
                     # 최종 응답
-                    yield f"data: {json.dumps({
-                        'type': 'final_response',
-                        'result': trace_event['parsed'],
-                        'timestamp': trace_event['timestamp']
-                    })}\n\n"
+                    parsed_result = trace_event.get('parsed', {})
+
+                    # 응답 포맷팅
+                    if parsed_result.get('success') and parsed_result.get('response_type') == 'json':
+                        # Supervisor Agent의 JSON 응답 처리
+                        formatted_response = response_formatter.format_supervisor_response(
+                            parsed_result.get('data', {}),
+                            request.message
+                        )
+
+                        yield f"data: {json.dumps({
+                            'type': 'final_response',
+                            'result': formatted_response,
+                            'timestamp': trace_event['timestamp'],
+                            'success': True
+                        }, ensure_ascii=False)}\n\n"
+                    else:
+                        # 텍스트 응답
+                        yield f"data: {json.dumps({
+                            'type': 'final_response',
+                            'result': {
+                                'type': 'text',
+                                'data': parsed_result.get('data', trace_event.get('content', ''))
+                            },
+                            'timestamp': trace_event['timestamp'],
+                            'success': True
+                        }, ensure_ascii=False)}\n\n"
 
                 elif trace_event["type"] == "error":
                     # 에러
@@ -502,7 +607,7 @@ async def chat_stream_with_trace(request: ChatRequest):
                         'type': 'error',
                         'error': trace_event['error'],
                         'timestamp': trace_event['timestamp']
-                    })}\n\n"
+                    }, ensure_ascii=False)}\n\n"
 
                 # 버퍼 플러시를 위한 양보
                 await asyncio.sleep(0)
@@ -512,7 +617,7 @@ async def chat_stream_with_trace(request: ChatRequest):
                 'type': 'error',
                 'error': str(e),
                 'message': '스트리밍 중 오류가 발생했습니다.'
-            })}\n\n"
+            }, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         trace_event_generator(),
@@ -520,57 +625,10 @@ async def chat_stream_with_trace(request: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*"  # CORS 추가
         }
     )
-
-
-# Trace 이벤트 파서
-class TraceEventParser:
-    """Bedrock Agent Trace 이벤트를 파싱하고 의미있는 정보로 변환"""
-
-    @staticmethod
-    def parse_orchestration_trace(trace_data: Dict[str, Any]) -> Dict[str, Any]:
-        """오케스트레이션 trace 파싱"""
-        result = {
-            "type": "orchestration",
-            "timestamp": datetime.now().isoformat()
-        }
-
-        # 모델 호출 정보
-        if "modelInvocationInput" in trace_data:
-            model_input = trace_data["modelInvocationInput"]
-            result["model"] = model_input.get("inferenceConfiguration", {}).get("modelId", "")
-            result["prompt"] = model_input.get("text", "")
-
-        # Action Group 호출 정보
-        if "invocationInput" in trace_data:
-            inv_input = trace_data["invocationInput"]
-            if "actionGroupInvocationInput" in inv_input:
-                ag_input = inv_input["actionGroupInvocationInput"]
-                result["action_group"] = ag_input.get("actionGroupName", "")
-                result["function"] = ag_input.get("function", "")
-                result["parameters"] = ag_input.get("parameters", [])
-
-        # 관찰 결과
-        if "observation" in trace_data:
-            observation = trace_data["observation"]
-
-            # Knowledge Base 결과
-            if "knowledgeBaseLookupOutput" in observation:
-                kb_output = observation["knowledgeBaseLookupOutput"]
-                result["knowledge_base_hits"] = len(kb_output.get("retrievedReferences", []))
-
-            # Action Group 결과
-            if "actionGroupInvocationOutput" in observation:
-                ag_output = observation["actionGroupInvocationOutput"]
-                result["action_result"] = ag_output.get("text", "")
-
-        # 추론 과정
-        if "rationale" in trace_data:
-            result["reasoning"] = trace_data["rationale"]["text"]
-
-        return result
 
 if __name__ == "__main__":
     import uvicorn
