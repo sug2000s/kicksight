@@ -423,17 +423,31 @@ const KickSightApp: React.FC = () => {
             );
         }
 
+// KickSightApp.tsx의 renderMessage 함수 내 bot-reasoning 부분만 발췌
+// 이 부분을 기존 코드의 해당 부분과 교체하세요
+
         if (message.type === 'bot-reasoning') {
             return (
                 <div className="flex justify-start mb-4">
-                    <div className="max-w-2xl">
+                    <div className="max-w-2xl w-full">
                         <div className="flex items-start space-x-2">
                             <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white">
                                 <RobotIcon />
                             </div>
                             <div className="flex-1">
-                                <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                                    <LoadingIndicator message={currentReasoningStep} Icon={currentStepIcon || undefined} />
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+                                    <div className="mb-2 flex items-center">
+                                        <h4 className="text-sm font-semibold text-blue-800">분석 진행 중...</h4>
+                                        <motion.div
+                                            className="ml-2 w-2 h-2 bg-blue-500 rounded-full"
+                                            animate={{ opacity: [1, 0.3, 1] }}
+                                            transition={{ duration: 1.5, repeat: Infinity }}
+                                        />
+                                    </div>
+                                    <LoadingIndicator
+                                        message={message.content as string || currentReasoningStep}
+                                        Icon={currentStepIcon || undefined}
+                                    />
                                 </div>
                             </div>
                         </div>

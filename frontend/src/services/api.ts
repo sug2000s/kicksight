@@ -40,16 +40,57 @@ export interface AgentsConfig {
     };
 }
 
-// Streaming response types
+// services/api.ts의 StreamEvent 타입 정의 부분
+// 기존 StreamEvent 인터페이스를 이것으로 교체하세요
+
 export interface StreamEvent {
-    type: 'stream_start' | 'reasoning' | 'agent_start' | 'final_response';
+    type: 'stream_start' | 'reasoning' | 'agent_start' | 'knowledge_base' |
+        'query_execution' | 'visualization_created' | 'error' | 'final_response' | string;
     message?: string;
     content?: string;
     agent?: string;
     display_name?: string;
+    references_count?: number;
+    query_id?: string;
+    chart_type?: string;
     result?: any;
     timestamp: string;
     success?: boolean;
+}
+
+// 추가로 필요할 수 있는 특정 이벤트 타입들
+export interface AgentStartEvent extends StreamEvent {
+    type: 'agent_start';
+    agent: string;
+    display_name: string;
+    message: string;
+}
+
+export interface KnowledgeBaseEvent extends StreamEvent {
+    type: 'knowledge_base';
+    references_count: number;
+    message: string;
+}
+
+export interface QueryExecutionEvent extends StreamEvent {
+    type: 'query_execution';
+    query_id: string;
+    message?: string;
+}
+
+export interface VisualizationCreatedEvent extends StreamEvent {
+    type: 'visualization_created';
+    chart_type: string;
+    message?: string;
+}
+
+export interface FinalResponseEvent extends StreamEvent {
+    type: 'final_response';
+    result: {
+        type: string;
+        data: any;
+    };
+    success: boolean;
 }
 
 class ApiService {
