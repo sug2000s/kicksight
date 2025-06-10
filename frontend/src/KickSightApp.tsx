@@ -46,7 +46,6 @@ const KickSightApp: React.FC = () => {
     const [selectedMode, setSelectedMode] = useState('QuickSight Mocking Agent');
 
 
-
     // useChat 훅 사용
     const {
         messages,
@@ -277,6 +276,7 @@ const KickSightApp: React.FC = () => {
 
         return null;
     };
+
     // 메인 컴포넌트에서 renderMessage 함수 내부에 추가할 렌더링 로직
     const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
         const hasDBResponse = content.query_id || content.query;
@@ -385,9 +385,15 @@ const KickSightApp: React.FC = () => {
                                 </div>
                                 <button
                                     onClick={() => {
-                                        //setCurrentQuickSightUrl(content.chart_url!);
-                                        //setShowQuickSightPanel(true);
-                                        alert("")
+                                        if (content.chart_url) {
+                                            alert(content.chart_url);
+                                        } else {
+                                            console.error("Chart URL is undefined for SupervisorAgentResponse.");
+                                            setNotificationMessage('오류');
+                                            setNotificationDescription('차트 URL이 제공되지 않았습니다.');
+                                            setShowNotification(true);
+                                            setTimeout(() => setShowNotification(false), 3000);
+                                        }
                                     }}
                                     className="flex items-center space-x-1 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
                                 >
@@ -525,7 +531,10 @@ const KickSightApp: React.FC = () => {
                                             </div>
                                         )}
                                         {isError(message.content) && (
-                                            <p>{message.content.message}</p>
+                                            <div className="text-red-600 bg-red-50 border border-red-200 rounded p-3 mt-2">
+                                                <p className="font-semibold">오류 발생:</p>
+                                                <p>{message.content.message || JSON.stringify(message.content)}</p>
+                                            </div>
                                         )}
                                         {isSupervisorAgentResponse(message.content) && renderSupervisorResponse(message.content)}
                                     </div>

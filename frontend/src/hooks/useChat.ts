@@ -116,7 +116,7 @@ export const useChat = (options: UseChatOptions = {}) => {
                                     if (event.success) {
                                         // --- 임시: 오브젝트면 문자열로 변환해서 표시 ---
                                         let displayContent = event.result?.data || event.result;
-                                        // 기존: content에 오브젝트가 들어갈 수 있음
+                                        //기존: content에 오브젝트가 들어갈 수 있음
                                         // const botMessage: Message = {
                                         //     id: Date.now() + 1,
                                         //     type: 'bot',
@@ -124,10 +124,10 @@ export const useChat = (options: UseChatOptions = {}) => {
                                         //     timestamp: event.timestamp
                                         // };
 
-                                        // 임시: object면 JSON.stringify로 변환
-                                        if (typeof displayContent === 'object') {
-                                            displayContent = JSON.stringify(displayContent, null, 2);
-                                        }
+                                        // // 임시: object면 JSON.stringify로 변환
+                                        // if (typeof displayContent === 'object') {
+                                        //     displayContent = JSON.stringify(displayContent, null, 2);
+                                        // }
 
                                         const botMessage: Message = {
                                             id: Date.now() + 1,
