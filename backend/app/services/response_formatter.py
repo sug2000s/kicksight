@@ -1,6 +1,7 @@
-"""응답 포맷터 서비스"""
+"""응답 포맷터 서비스 - JSON 문자열 자동 파싱 버전"""
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import json
 
 
 class ResponseFormatter:
@@ -8,6 +9,10 @@ class ResponseFormatter:
 
     def format_quicksight_response(self, data: Any, original_query: str) -> Dict[str, Any]:
         """QuickSight Agent 응답 포맷팅"""
+
+        # 1️⃣ JSON 문자열 감지 및 파싱 추가
+        data = self._parse_json_if_string(data)
+
         # 텍스트 응답인 경우
         if isinstance(data, str):
             return {
@@ -34,8 +39,8 @@ class ResponseFormatter:
             if "table_data" in data or "columns" in data:
                 return self._format_table_response(data)
 
-            # 분석 응답
-            if any(key in data for key in ["query", "analysis", "result", "csv_url"]):
+            # 분석 응답 - 조건 개선
+            if self._is_analysis_response(data):
                 return self._format_analysis_response(data)
 
             # QuickSight 대시보드 응답
@@ -50,6 +55,10 @@ class ResponseFormatter:
 
     def format_supervisor_response(self, data: Any, original_query: str) -> Dict[str, Any]:
         """Supervisor Agent 응답 포맷팅"""
+
+        # 1️⃣ JSON 문자열 감지 및 파싱 추가
+        data = self._parse_json_if_string(data)
+
         # QuickSight 포맷터와 유사하지만 Supervisor 특화 처리 추가
         if isinstance(data, str):
             return {
@@ -73,6 +82,51 @@ class ResponseFormatter:
             "type": "text",
             "data": str(data)
         }
+
+    def _parse_json_if_string(self, data: Any) -> Any:
+        """
+        2️⃣ JSON 문자열인 경우 자동으로 파싱하는 헬퍼 메서드
+
+        Args:
+            data: 입력 데이터 (문자열 또는 기타)
+
+        Returns:
+            파싱된 데이터 또는 원본 데이터
+        """
+        if isinstance(data, str):
+            # JSON 문자열 패턴 확인
+            trimmed = data.strip()
+            if (trimmed.startswith('{') and trimmed.endswith('}')) or \
+               (trimmed.startswith('[') and trimmed.endswith(']')):
+                try:
+                    parsed = json.loads(data)
+                    print(f"[ResponseFormatter] JSON 문자열 자동 파싱 성공: {list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}")
+                    return parsed
+                except json.JSONDecodeError as e:
+                    print(f"[ResponseFormatter] JSON 파싱 실패, 원본 문자열 유지: {str(e)[:100]}")
+                    return data
+
+        return data
+
+    def _is_analysis_response(self, data: Dict[str, Any]) -> bool:
+        """
+        3️⃣ 분석 응답 여부를 더 정확하게 판단하는 메서드
+
+        Args:
+            data: 검사할 딕셔너리
+
+        Returns:
+            분석 응답 여부
+        """
+        # 분석 응답의 주요 필드들
+        analysis_fields = {
+            "query", "query_id", "analysis", "result",
+            "csv_url", "explanation", "visualization_analysis_result"
+        }
+
+        # 최소 2개 이상의 분석 관련 필드가 있으면 분석 응답으로 판단
+        matching_fields = sum(1 for field in analysis_fields if field in data)
+        return matching_fields >= 2
 
     def _format_chart_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """차트 응답 포맷팅"""
