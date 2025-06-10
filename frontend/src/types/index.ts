@@ -79,3 +79,15 @@ export interface ChatState {
     sessionId: string | null;
     isConnected: boolean;
 }
+
+// ── near your other type-guard imports or just above KickSightApp ──
+export interface SupervisorAgentResponse {
+    query_id?: string;
+    query?: string;
+    explanation?: string;
+    sample_analysis?: string;
+    csv_url?: string;
+    chart_url?: string;
+    visualization_analysis_result?: string;
+}
+

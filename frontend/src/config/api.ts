@@ -5,6 +5,7 @@ export const API_CONFIG = {
         CHAT: '/api/chat',
         CHAT_STREAM: '/api/chat/stream',
         CHAT_STREAM_TRACE: '/api/chat/stream/trace',
+        //CHAT_STREAM_TRACE: '/api/chat/stream/mockingtrace',
         SESSION: '/api/session',
         AGENTS_CONFIG: '/api/agents/config'
     }
