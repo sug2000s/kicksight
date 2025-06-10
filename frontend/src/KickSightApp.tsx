@@ -3,12 +3,12 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import types
-import type {Message, Conversation, AnalysisResponse, SupervisorAgentResponse} from './types';
+import type {Message, Conversation, AnalysisResponse, SupervisorAgentResponse,QuickSightIFrameResponse} from './types';
 
 // Import icons
 import {
     MenuIcon, PlusIcon, SettingsIcon, SendIcon, HeartIcon,
-    RobotIcon, CloseIcon, UserIcon, ChartIcon
+    RobotIcon, CloseIcon, UserIcon
 } from './components/icons';
 
 // Import components
@@ -22,7 +22,8 @@ import {
     isPieChart,
     isLineChart,
     isError,
-    isSupervisorAgentResponse
+    isSupervisorAgentResponse,
+    isQuickSightIFrame
 } from './utils/typeGuards';
 import { COLORS } from './data/mockData';
 
@@ -43,7 +44,7 @@ const KickSightApp: React.FC = () => {
     const [notificationMessage, setNotificationMessage] = useState('');
     const [notificationDescription, setNotificationDescription] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
-    const [selectedMode, setSelectedMode] = useState('QuickSight Mocking Agent');
+    const [selectedMode, setSelectedMode] = useState('Supervisor Agent');
 
 
     // useChat 훅 사용
@@ -143,8 +144,45 @@ const KickSightApp: React.FC = () => {
         setDropdownOpen(false);
     };
 
+    // KickSightApp.tsx의 완전한 renderVisualization 함수
+
     const renderVisualization = () => {
         if (!currentVisualization) return null;
+
+        // QuickSight IFrame 처리 - 타입 안전성 보장
+        if (currentVisualization.type === 'quicksight_iframe' && 'url' in currentVisualization) {
+            const quicksightUrl = (currentVisualization as QuickSightIFrameResponse).url;
+            const quicksightTitle = (currentVisualization as QuickSightIFrameResponse).title || 'QuickSight Dashboard';
+
+            return (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">{quicksightTitle}</h3>
+                        <button
+                            onClick={() => window.open(quicksightUrl, '_blank')}
+                            className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                            </svg>
+                            <span>새 창에서 열기</span>
+                        </button>
+                    </div>
+                    <div className="flex-1 relative">
+                        <iframe
+                            src={quicksightUrl}
+                            className="w-full h-full rounded border border-gray-200"
+                            title={quicksightTitle}
+                            allow="fullscreen"
+                            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                        />
+                        <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 px-2 py-1 rounded text-xs text-gray-600 shadow-sm">
+                            QuickSight 대시보드가 로드되었습니다
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         if (isVOCTable(currentVisualization)) {
             return (
@@ -257,10 +295,10 @@ const KickSightApp: React.FC = () => {
                         <h4 className="font-semibold mb-2">Peak Hours</h4>
                         {currentVisualization.peak_hours && Object.entries(currentVisualization.peak_hours).map(([category, time]) => (
                             <div key={category} className="flex items-center mb-1">
-                                <span
-                                    className="w-3 h-3 rounded-full mr-2"
-                                    style={{ backgroundColor: COLORS[currentVisualization.categories?.indexOf(category) % COLORS.length] }}
-                                />
+                            <span
+                                className="w-3 h-3 rounded-full mr-2"
+                                style={{ backgroundColor: COLORS[currentVisualization.categories?.indexOf(category) % COLORS.length] }}
+                            />
                                 <span className="text-sm">{category}: {time}</span>
                             </div>
                         ))}
@@ -277,7 +315,8 @@ const KickSightApp: React.FC = () => {
         return null;
     };
 
-    // 메인 컴포넌트에서 renderMessage 함수 내부에 추가할 렌더링 로직
+    // KickSightApp.tsx의 완전한 renderSupervisorResponse 함수
+
     const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
         const hasDBResponse = content.query_id || content.query;
         const hasQuickSightResponse = content.chart_url;
@@ -386,7 +425,14 @@ const KickSightApp: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         if (content.chart_url) {
-                                            alert(content.chart_url);
+                                            // QuickSight iframe 응답 객체 생성
+                                            const iframeResponse: QuickSightIFrameResponse = {
+                                                type: 'quicksight_iframe',
+                                                url: content.chart_url,
+                                                title: 'QuickSight Dashboard'
+                                            };
+                                            setCurrentVisualization(iframeResponse);
+                                            setShowVisualization(true);
                                         } else {
                                             console.error("Chart URL is undefined for SupervisorAgentResponse.");
                                             setNotificationMessage('오류');

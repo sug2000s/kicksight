@@ -6,7 +6,7 @@ import {
     PieChartResponse,
     LineChartResponse,
     ErrorResponse,
-    SupervisorAgentResponse
+    SupervisorAgentResponse, QuickSightIFrameResponse
 } from '../types';
 
 export function isVOCAnalysis(response: AnalysisResponse): response is VOCAnalysisResponse {
@@ -38,4 +38,9 @@ export function isSupervisorAgentResponse(response: AnalysisResponse): response 
             'chart_url' in response
         )
     );
+}
+export function isQuickSightIFrame(response: AnalysisResponse | null): response is QuickSightIFrameResponse {
+    return response !== null &&
+        response.type === 'quicksight_iframe' &&
+        'url' in response;
 }

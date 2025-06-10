@@ -58,7 +58,8 @@ export interface ErrorResponse {
     message: string;
 }
 
-export type AnalysisResponse = VOCAnalysisResponse | VOCTableResponse | PieChartResponse | LineChartResponse | ErrorResponse;
+// AnalysisResponse 타입 업데이트
+export type AnalysisResponse = VOCAnalysisResponse | VOCTableResponse | PieChartResponse | LineChartResponse | ErrorResponse | QuickSightIFrameResponse;
 
 export interface ReasoningStep {
     text: string;
@@ -90,4 +91,14 @@ export interface SupervisorAgentResponse {
     chart_url?: string;
     visualization_analysis_result?: string;
 }
+
+// types/index.ts에 추가할 타입들
+
+// 기존 AnalysisResponse 타입에 추가
+export interface QuickSightIFrameResponse {
+    type: 'quicksight_iframe';
+    url: string;
+    title?: string;
+}
+
 
