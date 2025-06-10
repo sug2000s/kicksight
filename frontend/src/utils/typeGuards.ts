@@ -5,7 +5,8 @@ import {
     VOCTableResponse,
     PieChartResponse,
     LineChartResponse,
-    ErrorResponse
+    ErrorResponse,
+    SupervisorAgentResponse
 } from '../types';
 
 export function isVOCAnalysis(response: AnalysisResponse): response is VOCAnalysisResponse {
@@ -26,4 +27,15 @@ export function isLineChart(response: AnalysisResponse): response is LineChartRe
 
 export function isError(response: AnalysisResponse): response is ErrorResponse {
     return 'message' in response && !('analysis_type' in response) && !('data_type' in response) && !('chart_type' in response);
+}
+
+export function isSupervisorAgentResponse(response: AnalysisResponse): response is SupervisorAgentResponse {
+    return (
+        response !== null &&
+        typeof response === 'object' &&
+        (
+            ('query_id' in response && 'query' in response) ||
+            'chart_url' in response
+        )
+    );
 }

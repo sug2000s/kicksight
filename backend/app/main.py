@@ -16,6 +16,11 @@ from app.response_formatter import ResponseFormatter
 import asyncio
 from datetime import datetime
 
+import itertools
+from datetime import datetime, timedelta
+import json, asyncio, uuid
+from fastapi.responses import StreamingResponse
+
 load_dotenv()
 
 app = FastAPI(
@@ -628,6 +633,117 @@ async def chat_stream_with_trace(request: ChatRequest):
             "X-Accel-Buffering": "no",
             "Access-Control-Allow-Origin": "*"  # CORS 추가
         }
+    )
+
+# ---------- 2) 새 엔드포인트 ----------
+@app.post("/api/chat/stream/mockingtrace")
+async def chat_stream_mockingtrace(request: ChatRequest):
+    """
+    Bedrock 호출 없이 ‘가짜(trace mocking) 스트림’을 흘려보내는 엔드포인트.
+    프론트엔드 스트리밍 처리 테스트용.
+    """
+
+    async def mock_event_generator():
+        """SSE(Event-Stream) 형식으로 샘플 메시지를 순차 전송"""
+        session_id = request.session_id or str(uuid.uuid4())
+        t0 = datetime.now()
+
+        # --- (1) 미리 정의한 샘플 이벤트 시퀀스 --------------------
+        base_events = [
+            {
+                "type": "stream_start",
+                "message": "Supervisor Agent 분석을 시작합니다...",
+            },
+            {
+                "type": "reasoning",
+                "content": (
+                    "To address this request, I'll need to:\n"
+                    "1. Refine the query for precise VOC data analysis\n"
+                    "2. Get the database query results\n"
+                    "3. Create a visualization dashboard\n"
+                    "4. Prepare a comprehensive analysis response"
+                ),
+            },
+            # 빈 display_name → 아래 매핑 로직으로 프론트에서 동일하게 보이게 할 수 있음
+            { "type": "agent_start", "agent": "", "display_name": "", "message": " 호출 중..." },
+            { "type": "agent_start", "agent": "", "display_name": "", "message": " 호출 중..." },
+            { "type": "agent_start", "agent": "", "display_name": "", "message": " 호출 중..." },
+            {
+                "type": "knowledge_base",
+                "references_count": 5,
+                "message": "Knowledge Base에서 5개의 참조를 찾았습니다.",
+            },
+            {
+                "type": "reasoning",
+                "content": (
+                    "이 요청을 처리하기 위해 2025년 1월 VOC 데이터에 대한 종합 분석을 수행해야 합니다. "
+                    "이를 위해 여러 가지 분석을 포함하는 SQL 쿼리를 생성해야 합니다. "
+                    "먼저 필요한 데이터를 추출하고 분석하기 위해 voc_data_analysis 함수를 사용하겠습니다.\n"
+                    "</thinking>\n\n"
+                    'voc_data_analysis: {"start_date": "2025-01-01", "end_date": "2025-01-31", '
+                    '"analysis_type": "comprehensive"}\n\n<thinking>\n'
+                    "voc_data_analysis 함수를 통해 2025년 1월의 VOC 데이터에 대한 종합 분석 결과를 얻었습니다. "
+                    "이제 이 결과를 바탕으로 사용자의 요청에 맞게 정보를 정리하여 제공하겠습니다."
+                ),
+            },
+            { "type": "agent_start", "agent": "", "display_name": "", "message": " 호출 중..." },
+            {
+                "type": "reasoning",
+                "content": (
+                    "To create a dashboard for the January 2025 VOC data analysis, "
+                    "I'll need to generate a QuickSight dashboard configuration JSON that includes the requested visualizations..."
+                ),
+            },
+            {
+                "type": "final_response",
+                "result": {
+                    "type": "text",
+                    "data": {
+                        "query_id": "VOC_2025_01_ANALYSIS",
+                        "query": (
+                            "SELECT COUNT(*), category_name, channel, priority, status "
+                            "FROM voc_reports WHERE year = 2025 AND month = 1 "
+                            "GROUP BY category_name, channel, priority, status"
+                        ),
+                        "explanation": "2025년 1월 VOC 데이터의 종합 분석 결과입니다.",
+                        "sample_analysis": "총 3,245건의 VOC 접수, 불만 유형 45%…",
+                        "csv_url": "https://example.com/voc-analysis/2025-01/data.csv",
+                        "chart_url": "https://example.com/quicksight/2025-01",
+                        "visualization_analysis_result": (
+                            "모바일 앱을 통한 불만 접수가 가장 많았으며, 주로 지연과 수하물 관련..."
+                        ),
+                    },
+                },
+                "success": True,
+            },
+        ]
+        # ----------------------------------------------------------
+
+        # --- (2) SSE 전송 루프 ------------------------------------
+        for idx, evt in enumerate(base_events):
+            # 각 이벤트마다 T+Δt 시간 스탬프 부여(예시: 0.5s 간격)
+            evt["timestamp"] = (t0 + timedelta(seconds=idx * 0.5)).isoformat()
+
+            # stream_start 에만 메시지 내용에 request.message 삽입(선택)
+            if evt["type"] == "stream_start" and request.message:
+                evt["message"] = f"{evt['message']}   (사용자 요청: {request.message})"
+
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+
+            # 느린 스트리밍 느낌을 주려면 약간의 지연
+            await asyncio.sleep(0.3)
+        # ----------------------------------------------------------
+
+    # ---------- (3) StreamingResponse 반환 ----------
+    return StreamingResponse(
+        mock_event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 if __name__ == "__main__":

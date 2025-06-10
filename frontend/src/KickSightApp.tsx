@@ -3,7 +3,7 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import types
-import type {Message, Conversation, AnalysisResponse} from './types';
+import type {Message, Conversation, AnalysisResponse, SupervisorAgentResponse} from './types';
 
 // Import icons
 import {
@@ -16,7 +16,14 @@ import Notification from './components/Notification';
 import LoadingIndicator from './components/LoadingIndicator';
 
 // Import utilities
-import { isVOCAnalysis, isVOCTable, isPieChart, isLineChart, isError } from './utils/typeGuards';
+import {
+    isVOCAnalysis,
+    isVOCTable,
+    isPieChart,
+    isLineChart,
+    isError,
+    isSupervisorAgentResponse
+} from './utils/typeGuards';
 import { COLORS } from './data/mockData';
 
 // Import custom hook
@@ -270,6 +277,132 @@ const KickSightApp: React.FC = () => {
 
         return null;
     };
+    // 메인 컴포넌트에서 renderMessage 함수 내부에 추가할 렌더링 로직
+    const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
+        const hasDBResponse = content.query_id || content.query;
+        const hasQuickSightResponse = content.chart_url;
+
+        return (
+            <div className="space-y-4">
+                {/* DB Agent 응답 */}
+                {hasDBResponse && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center mb-3">
+                            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center mr-2">
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 1.79 4 4 4h8c0-2.21-1.79-4-4-4H4V7z" />
+                                </svg>
+                            </div>
+                            <h4 className="font-semibold text-blue-800">DB 분석 결과</h4>
+                        </div>
+
+                        {content.query_id && (
+                            <div className="mb-3">
+                                <span className="text-sm font-medium text-blue-700">쿼리 ID:</span>
+                                <span className="ml-2 text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded font-mono">
+                                {content.query_id}
+                            </span>
+                            </div>
+                        )}
+
+                        {content.explanation && (
+                            <div className="mb-3">
+                                <p className="text-sm font-medium text-blue-700 mb-1">분석 설명:</p>
+                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3">
+                                    {content.explanation}
+                                </p>
+                            </div>
+                        )}
+
+                        {content.query && (
+                            <div className="mb-3">
+                                <p className="text-sm font-medium text-blue-700 mb-1">실행된 쿼리:</p>
+                                <pre className="text-sm text-blue-800 bg-gray-800 text-green-400 border border-blue-200 rounded p-3 overflow-x-auto font-mono whitespace-pre-wrap">
+{content.query}
+                            </pre>
+                            </div>
+                        )}
+
+                        {content.sample_analysis && (
+                            <div className="mb-3">
+                                <p className="text-sm font-medium text-blue-700 mb-1">샘플 분석 결과:</p>
+                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3">
+                                    {content.sample_analysis}
+                                </p>
+                            </div>
+                        )}
+
+                        {content.csv_url && (
+                            <div className="flex items-center justify-between bg-white border border-blue-200 rounded p-3">
+                                <div className="flex items-center">
+                                    <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-blue-700">CSV 데이터 다운로드</span>
+                                </div>
+                                <button
+                                    onClick={() => window.open(content.csv_url, '_blank')}
+                                    className="flex items-center space-x-1 px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    <span>다운로드</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* QuickSight Agent 응답 */}
+                {hasQuickSightResponse && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center mb-3">
+                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center mr-2">
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                            </div>
+                            <h4 className="font-semibold text-green-800">QuickSight 시각화</h4>
+                        </div>
+
+                        {content.visualization_analysis_result && (
+                            <div className="mb-3">
+                                <p className="text-sm font-medium text-green-700 mb-1">시각화 분석 결과:</p>
+                                <p className="text-sm text-green-800 bg-white border border-green-200 rounded p-3">
+                                    {content.visualization_analysis_result}
+                                </p>
+                            </div>
+                        )}
+
+                        {content.chart_url && (
+                            <div className="flex items-center justify-between bg-white border border-green-200 rounded p-3">
+                                <div className="flex items-center">
+                                    <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-green-700">QuickSight 차트 보기</span>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        //setCurrentQuickSightUrl(content.chart_url!);
+                                        //setShowQuickSightPanel(true);
+                                        alert("")
+                                    }}
+                                    className="flex items-center space-x-1 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    <span>차트 열기</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const renderMessage = (message: Message) => {
         if (message.type === 'user') {
@@ -394,6 +527,7 @@ const KickSightApp: React.FC = () => {
                                         {isError(message.content) && (
                                             <p>{message.content.message}</p>
                                         )}
+                                        {isSupervisorAgentResponse(message.content) && renderSupervisorResponse(message.content)}
                                     </div>
                                 ) : (
                                     <p>{message.content}</p>
