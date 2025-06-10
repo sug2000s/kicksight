@@ -710,7 +710,7 @@ async def chat_stream_mockingtrace(request: ChatRequest):
                         "explanation": "2025년 1월 VOC 데이터의 종합 분석 결과입니다.",
                         "sample_analysis": "총 3,245건의 VOC 접수, 불만 유형 45%…",
                         "csv_url": "https://example.com/voc-analysis/2025-01/data.csv",
-                        "chart_url": "https://example.com/quicksight/2025-01",
+                        "chart_url": "https://us-west-2.quicksight.aws.amazon.com/embed/cc00bdb3536442f7a52ea0a1c7621c9f/dashboards/b9e9f461-e6c2-48bf-a779-15343878d9fd?identityprovider=quicksight&isauthcode=true&code=AYABeFrYcFzr9Ru9jT0FZJmJBHgAAAABAAdhd3Mta21zAEthcm46YXdzOmttczp1cy13ZXN0LTI6OTAwNjQ5NDI3MTk2OmtleS9iYzAzMTYzMy0xYzJiLTRlMzEtYWM5ZC0yODQ2NDkwZjEyM2YAuAECAQB4mz4JO4Ca1RJdUFOpzYk5RcrJTYF1X8y98uVCKbOg_-ABqN0CkG4qU7qOklzW2rD2jgAAAH4wfAYJKoZIhvcNAQcGoG8wbQIBADBoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDIMAZr7SFTsy2TvTKgIBEIA7BQh9VU_SfM9WwfAUKlFVqUKVLaHIgq9ACvX1A5wZwN9g4PS-poCKVJFmwa_AFkLlg971rAVxQBXKu3wCAAAAAAwAABAAAAAAAAAAAAAAAAAAvtC0Ds-8sNnG-X6hCCmG-_____8AAAABAAAAAAAAAAAAAAABAAAAm2mBQnjgVDuQWS3IATaOGisOWOCXOPKdHL_1z2YD4NYu0L7QeEjkrAbfwuxlU2MmfyOchEr5I-uegL53ze8hLXolxBBbdiEDSjP9zA3BlUJh2dDgzTrOLFO3k7jMMZeX0KqCdjN2SjvutBjOGeSi1P3SR1YGGBsk_BHG7FO8v26qnw8xQP7lYnM-B7BXO2XSE9GVJtXbM8iu69XVACwxQbxuGsXfap40gU60-Q%3D%3D",
                         "visualization_analysis_result": (
                             "모바일 앱을 통한 불만 접수가 가장 많았으며, 주로 지연과 수하물 관련..."
                         ),
