@@ -1,5 +1,6 @@
 """FastAPI 애플리케이션 메인 모듈"""
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,28 +57,36 @@ async def root():
 
 @app.get(f"{settings.api_prefix}/agents/config")
 async def get_agents_config():
-    """에이전트 설정 정보 조회"""
-    # QuickSight 설정 파일 읽기
-    quicksight_config = {
-        "agent_id": settings.quicksight_agent_id or '',
-        "agent_alias_id": settings.quicksight_agent_alias_id or ''
-    }
+    """에이전트 설정 정보 조회 (agent_id별로 alias 목록을 id+name 형태로 반환)"""
+    config_path = Path(__file__).parent.parent / 'quicksight_agent_config.json'
 
     try:
-        with open('../quicksight_agent_config.json', 'r') as f:
-            file_config = json.load(f)
-            quicksight_config.update(file_config)
-    except:
-        pass
+        raw_entries = json.loads(config_path.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return {"agents": []}
 
-    return {
-        "quicksight_agent": quicksight_config,
-        "supervisor_agent": {
-            "agent_id": settings.supervisor_agent_id,
-            "agent_alias_id": settings.supervisor_agent_alias_id
-        }
-    }
+    agents_map: dict[str, dict] = {}
+    for entry in raw_entries:
+        aid         = entry["agent_id"]
+        name        = entry.get("agent_name", "")
+        alias_id    = entry["agent_alias_id"]
+        alias_name  = entry.get("agent_alias_name", "")
 
+        # 최초 등장 시 기본 구조 생성
+        if aid not in agents_map:
+            agents_map[aid] = {
+                "agent_id":   aid,
+                "agent_name": name,
+                "aliases":    []      # alias 객체들을 담을 리스트
+            }
+
+        # alias 객체 추가
+        agents_map[aid]["aliases"].append({
+            "alias_id":   alias_id,
+            "alias_name": alias_name
+        })
+
+    return {"agents": list(agents_map.values())}
 
 @app.get(f"{settings.api_prefix}/health")
 async def health_check():

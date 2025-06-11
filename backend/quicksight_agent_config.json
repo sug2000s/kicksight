@@ -1,4 +1,14 @@
-{
-  "agent_id": "94PJOYIRAO",
-  "agent_alias_id": "YFPFMU5BCB"
-}
+[
+  {
+    "agent_id": "UXEVYB5QYQ",
+    "agent_alias_id": "8ZS7GUIANZ",
+    "agent_name": "Supervisor Agent",
+    "agent_alias_name": "supervisor-alias-v6"
+  },
+    {
+    "agent_id": "UXEVYB5QYQ",
+    "agent_alias_id": "TSTALIASID",
+    "agent_name": "Supervisor Agent",
+    "agent_alias_name": "DRAFT"
+  }
+]

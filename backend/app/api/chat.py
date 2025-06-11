@@ -76,9 +76,19 @@ async def _handle_quicksight_agent(request: ChatRequest, session_id: str) -> Cha
 
 async def _handle_supervisor_agent(request: ChatRequest, session_id: str) -> ChatResponse:
     """Supervisor Agent 처리"""
+    # 에이전트 설정 처리
+    agent_id = None
+    agent_alias_id = None
+
+    if request.agent_config:
+        agent_id = request.agent_config.get("agent_id")
+        agent_alias_id = request.agent_config.get("agent_alias_id")
+
     agent_response = bedrock_client.supervisor_agent_invoke(
         prompt_text=request.message,
-        user_id=session_id
+        user_id=session_id,
+        agent_id=agent_id,
+        agent_alias_id=agent_alias_id
     )
 
     return _process_agent_response(agent_response, request.message, session_id, "supervisor")
@@ -141,10 +151,25 @@ async def chat_stream_with_trace(request: ChatRequest):
                 'timestamp': datetime.now().isoformat()
             }, ensure_ascii=False)}\n\n"
 
+            # 에이전트 설정 추출
+            agent_id = None
+            agent_alias_id = None
+
+            if request.agent_config:
+                agent_id = request.agent_config.get("agent_id")
+                agent_alias_id = request.agent_config.get("agent_alias_id")
+
+                # 에이전트 정보 로깅
+                print(f"📌 Using agent configuration:")
+                print(f"   Agent ID: {agent_id}")
+                print(f"   Alias ID: {agent_alias_id}")
+
             # Trace 스트리밍
             async for trace_event in bedrock_client.supervisor_agent_invoke_with_trace(
                     prompt_text=request.message,
-                    user_id=session_id
+                    user_id=session_id,
+                    agent_id=agent_id,
+                    agent_alias_id=agent_alias_id
             ):
                 # 이벤트 타입별 처리
                 formatted_event = _format_trace_event(trace_event)

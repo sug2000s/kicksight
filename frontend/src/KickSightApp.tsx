@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'sql-formatter';
 
 // Import types
-import type { Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse } from './types';
+import type {Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse, AgentInfo} from './types';
 
 // Import icons
 import {
@@ -39,6 +39,10 @@ const KickSightApp: React.FC = () => {
     const [notificationDescription, setNotificationDescription] = useState('');
     const [iframeError, setIframeError] = useState(false);
 
+    // 에이전트 관련 상태
+    const [selectedAgent, setSelectedAgent] = useState<string>('');
+    const [isLoadingAgents, setIsLoadingAgents] = useState(true);
+
     // useChat 훅 사용 - Supervisor Agent 전용
     const {
         messages,
@@ -48,8 +52,10 @@ const KickSightApp: React.FC = () => {
         sendMessage,
         clearSession,
         newSession,
-        setMessages
+        setMessages,
+        agentsConfig
     } = useChat({
+        mode: 'Supervisor Agent',
         onError: (error: Error) => {
             console.error('Chat error:', error);
             setNotificationMessage('오류가 발생했습니다');
@@ -58,6 +64,21 @@ const KickSightApp: React.FC = () => {
             setTimeout(() => setShowNotification(false), 3000);
         }
     });
+
+    // 에이전트 설정 로드 및 기본값 설정
+    useEffect(() => {
+        if (agentsConfig && agentsConfig.agents.length > 0) {
+            if (!selectedAgent) {
+                // 기본 선택값 설정 (첫 번째 에이전트의 첫 번째 얼라이어스)
+                const firstAgent = agentsConfig.agents[0];
+                if (firstAgent.aliases.length > 0) {
+                    const defaultSelection = `${firstAgent.agent_id}-${firstAgent.aliases[0].alias_id}`;
+                    setSelectedAgent(defaultSelection);
+                }
+            }
+            setIsLoadingAgents(false);
+        }
+    }, [agentsConfig, selectedAgent]);
 
     // 백엔드 연결 상태 확인
     useEffect(() => {
@@ -76,11 +97,57 @@ const KickSightApp: React.FC = () => {
 
     const currentConvo = conversations.find(c => c.id === activeConversation);
 
+    // 에이전트 선택 옵션 생성 함수
+    const getAgentOptions = () => {
+        const options: Array<{ value: string; label: string }> = [];
+
+        if (agentsConfig) {
+            agentsConfig.agents.forEach(agent => {
+                agent.aliases.forEach(alias => {
+                    options.push({
+                        value: `${agent.agent_id}-${alias.alias_id}`,
+                        label: `${agent.agent_name} - ${alias.alias_name}`
+                    });
+                });
+            });
+        }
+
+        return options;
+    };
+
+    // 선택된 에이전트 정보 가져오기
+    const getSelectedAgentInfo = () => {
+        if (!selectedAgent || !agentsConfig) return null;
+
+        const [agentId, aliasId] = selectedAgent.split('-');
+        const agent = agentsConfig.agents.find(a => a.agent_id === agentId);
+        const alias = agent?.aliases.find(a => a.alias_id === aliasId);
+
+        return {
+            agent_id: agentId,
+            agent_alias_id: aliasId,
+            agent_name: agent?.agent_name || '',
+            alias_name: alias?.alias_name || ''
+        };
+    };
+
     const handleSendMessage = async () => {
         if (!inputMessage.trim() || isProcessing) return;
 
+        const agentInfo = getSelectedAgentInfo();
+        if (!agentInfo) {
+            setNotificationMessage('에이전트를 선택해주세요');
+            setNotificationDescription('메시지를 보내기 전에 에이전트를 선택해야 합니다.');
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 3000);
+            return;
+        }
+
         try {
-            await sendMessage(inputMessage);
+            await sendMessage(inputMessage, {
+                agent_id: agentInfo.agent_id,
+                agent_alias_id: agentInfo.agent_alias_id
+            });
             setInputMessage('');
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -474,6 +541,35 @@ const KickSightApp: React.FC = () => {
                         <span className="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full font-medium">
                             Supervisor Agent
                         </span>
+
+                        {/* 에이전트 선택 드롭다운 */}
+                        <div className="flex items-center space-x-2">
+                            <label htmlFor="agent-select" className="text-sm text-gray-600">에이전트:</label>
+                            <select
+                                id="agent-select"
+                                value={selectedAgent}
+                                onChange={(e) => setSelectedAgent(e.target.value)}
+                                disabled={isLoadingAgents}
+                                className="text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            >
+                                {isLoadingAgents ? (
+                                    <option value="">로딩 중...</option>
+                                ) : (
+                                    <>
+                                        {getAgentOptions().length === 0 ? (
+                                            <option value="">에이전트 없음</option>
+                                        ) : (
+                                            getAgentOptions().map(option => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))
+                                        )}
+                                    </>
+                                )}
+                            </select>
+                        </div>
+
                         {sessionId && (
                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                 세션: {sessionId.slice(0, 8)}...
@@ -541,6 +637,13 @@ const KickSightApp: React.FC = () => {
                                                         DB Agent와 QuickSight Agent를 통합하여 분석을 수행합니다.
                                                     </p>
                                                 </div>
+                                                {selectedAgent && (
+                                                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                                                        <p className="text-sm text-green-700">
+                                                            선택된 에이전트: <strong>{getSelectedAgentInfo()?.agent_name} - {getSelectedAgentInfo()?.alias_name}</strong>
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="text-left bg-gray-50 rounded-lg p-4">
                                                 <h3 className="font-semibold mb-2">예시 질문:</h3>
@@ -573,13 +676,13 @@ const KickSightApp: React.FC = () => {
                                         placeholder="Supervisor Agent에게 메시지를 입력하세요..."
                                         className="flex-1 resize-none border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         rows={3}
-                                        disabled={isProcessing}
+                                        disabled={isProcessing || !selectedAgent}
                                     />
                                     <button
                                         onClick={handleSendMessage}
-                                        disabled={!inputMessage.trim() || isProcessing}
+                                        disabled={!inputMessage.trim() || isProcessing || !selectedAgent}
                                         className={`px-4 py-2 rounded-md transition-colors flex items-center space-x-2 ${
-                                            inputMessage.trim() && !isProcessing
+                                            inputMessage.trim() && !isProcessing && selectedAgent
                                                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                         }`}
@@ -588,6 +691,9 @@ const KickSightApp: React.FC = () => {
                                         <span>전송</span>
                                     </button>
                                 </div>
+                                {!selectedAgent && (
+                                    <p className="text-sm text-red-500 mt-2">메시지를 보내기 전에 에이전트를 선택해주세요.</p>
+                                )}
                             </div>
                         </div>
                     </div>

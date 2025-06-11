@@ -1,6 +1,6 @@
 // services/api.ts
 import { API_CONFIG, DEFAULT_HEADERS } from '../config/api';
-import type { AnalysisResponse } from '../types';
+import type { AnalysisResponse, AgentsConfigResponse } from '../types';
 
 export interface ChatRequest {
     message: string;
@@ -28,20 +28,6 @@ export interface SessionInfo {
     }>;
     created_at: string;
 }
-
-export interface AgentsConfig {
-    quicksight_agent: {
-        agent_id: string;
-        agent_alias_id: string;
-    };
-    supervisor_agent: {
-        agent_id: string;
-        agent_alias_id: string;
-    };
-}
-
-// services/api.ts의 StreamEvent 타입 정의 부분
-// 기존 StreamEvent 인터페이스를 이것으로 교체하세요
 
 export interface StreamEvent {
     type: 'stream_start' | 'reasoning' | 'agent_start' | 'knowledge_base' |
@@ -153,7 +139,7 @@ class ApiService {
         }
     }
 
-    async getAgentsConfig(): Promise<AgentsConfig> {
+    async getAgentsConfig(): Promise<AgentsConfigResponse> {
         try {
             const response = await fetch(`${this.baseUrl}${API_CONFIG.ENDPOINTS.AGENTS_CONFIG}`, {
                 method: 'GET',
@@ -173,7 +159,15 @@ class ApiService {
 
     // Supervisor Agent를 위한 스트리밍 메서드
     async sendMessageStreamTrace(
-        request: { message: string; mode: string; session_id?: string },
+        request: {
+            message: string;
+            mode: string;
+            session_id?: string;
+            agent_config?: {
+                agent_id: string;
+                agent_alias_id: string;
+            };
+        },
         onEvent: (event: StreamEvent) => void
     ): Promise<void> {
         try {

@@ -77,11 +77,29 @@ class BedrockClient:
                 "raw_text": ""
             }
 
-    def supervisor_agent_invoke(self, prompt_text: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def supervisor_agent_invoke(
+            self,
+            prompt_text: str,
+            user_id: Optional[str] = None,
+            agent_id: Optional[str] = None,
+            agent_alias_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Supervisor Agent 호출"""
+        # 에이전트 ID 우선순위: 파라미터 > 환경변수/설정
+        final_agent_id = agent_id or self.settings.supervisor_agent_id
+        final_alias_id = agent_alias_id or self.settings.supervisor_agent_alias_id
+
+        if not final_agent_id or not final_alias_id:
+            return {
+                "success": False,
+                "error": "Supervisor Agent ID 또는 Alias ID가 설정되지 않았습니다.",
+                "data": None,
+                "raw_text": ""
+            }
+
         return self.invoke_agent(
-            agent_id=self.settings.supervisor_agent_id,
-            alias_id=self.settings.supervisor_agent_alias_id,
+            agent_id=final_agent_id,
+            alias_id=final_alias_id,
             prompt_text=prompt_text,
             user_id=user_id or "default-user"
         )
@@ -125,6 +143,11 @@ class BedrockClient:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Trace 정보와 함께 에이전트 호출 (스트리밍)"""
         try:
+            print(f"🔍 Agent Trace 호출 중...")
+            print(f"   Agent ID: {agent_id}")
+            print(f"   Alias ID: {alias_id}")
+            print(f"   Query: {prompt_text}")
+
             response = self.bedrock_agent_runtime.invoke_agent(
                 agentId=agent_id,
                 agentAliasId=alias_id,
@@ -166,12 +189,26 @@ class BedrockClient:
     async def supervisor_agent_invoke_with_trace(
             self,
             prompt_text: str,
-            user_id: Optional[str] = None
+            user_id: Optional[str] = None,
+            agent_id: Optional[str] = None,
+            agent_alias_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Supervisor Agent Trace 호출"""
+        # 에이전트 ID 우선순위: 파라미터 > 환경변수/설정
+        final_agent_id = agent_id or self.settings.supervisor_agent_id
+        final_alias_id = agent_alias_id or self.settings.supervisor_agent_alias_id
+
+        if not final_agent_id or not final_alias_id:
+            yield {
+                "type": "error",
+                "timestamp": datetime.now().isoformat(),
+                "error": "Supervisor Agent ID 또는 Alias ID가 설정되지 않았습니다."
+            }
+            return
+
         async for event in self.invoke_agent_with_trace(
-                agent_id=self.settings.supervisor_agent_id,
-                alias_id=self.settings.supervisor_agent_alias_id,
+                agent_id=final_agent_id,
+                alias_id=final_alias_id,
                 prompt_text=prompt_text,
                 user_id=user_id or "default-user"
         ):

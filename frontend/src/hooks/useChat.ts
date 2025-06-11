@@ -1,18 +1,18 @@
 // hooks/useChat.ts
 import { useState, useCallback, useEffect } from 'react';
-import { apiService, StreamEvent } from '../services/api';
-import type { Message, AnalysisResponse } from '../types';
+import { apiService, ChatRequest, StreamEvent } from '../services/api';
+import type { Message, AnalysisResponse, AgentsConfigResponse } from '../types';
+
 import {
     isSupervisorAgentResponse,
 } from '../utils/typeGuards';
 
 import { parseJsonContent } from '../utils/json';   // 새 유틸 추가
-
 interface UseChatOptions {
     sessionId?: string;
+    mode?: string;
     onError?: (error: Error) => void;
 }
-
 
 // 에이전트 아이콘 매핑
 const agentIcons: Record<string, string> = {
@@ -29,6 +29,16 @@ export const useChat = (options: UseChatOptions = {}) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [currentReasoningStep, setCurrentReasoningStep] = useState('');
+    const [currentStepIcon, setCurrentStepIcon] = useState<React.FC | null>(null);
+    const [agentsConfig, setAgentsConfig] = useState<AgentsConfigResponse | null>(null);
+    const [streamingSteps, setStreamingSteps] = useState<string[]>([]);
+
+    // 에이전트 설정 로드
+    useEffect(() => {
+        apiService.getAgentsConfig()
+            .then(config => setAgentsConfig(config))
+            .catch(error => console.error('Failed to load agents config:', error));
+    }, []);
 
     // 세션 ID를 로컬 스토리지에서 관리
     useEffect(() => {
@@ -36,6 +46,7 @@ export const useChat = (options: UseChatOptions = {}) => {
             const storedSessionId = localStorage.getItem('kicksight_session_id');
             if (storedSessionId) {
                 setSessionId(storedSessionId);
+                // 기존 세션 메시지 로드
                 loadSession(storedSessionId);
             }
         } else {
@@ -46,6 +57,7 @@ export const useChat = (options: UseChatOptions = {}) => {
     const loadSession = async (sessionId: string) => {
         try {
             const sessionInfo = await apiService.getSession(sessionId);
+            // 세션 메시지를 Message 형식으로 변환
             const loadedMessages: Message[] = sessionInfo.messages.map((msg, index) => ({
                 id: Date.now() + index,
                 type: msg.role === 'user' ? 'user' : 'bot',
@@ -85,13 +97,17 @@ export const useChat = (options: UseChatOptions = {}) => {
         });
     };
 
-    const sendMessage = useCallback(async (message: string): Promise<{
+    const sendMessage = useCallback(async (
+        message: string,
+        agentConfig?: { agent_id: string; agent_alias_id: string }
+    ): Promise<{
         response: AnalysisResponse | string;
         responseType: string;
     }> => {
         if (isProcessing) return { response: '', responseType: 'text' };
 
         setIsProcessing(true);
+        setStreamingSteps([]);
 
         try {
             // 사용자 메시지 추가
@@ -103,143 +119,163 @@ export const useChat = (options: UseChatOptions = {}) => {
             };
             setMessages(prev => [...prev, userMessage]);
 
-            // 추론 단계 메시지 추가
-            const reasoningMessage: Message = {
-                id: Date.now() + 0.5,
-                type: 'bot-reasoning',
-                content: '',
-                timestamp: new Date().toISOString()
-            };
-            setMessages(prev => [...prev, reasoningMessage]);
+            // Supervisor Agent 모드인 경우 스트리밍 사용
+            if (options.mode === 'Supervisor Agent') {
+                // 추론 단계 메시지 추가
+                const reasoningMessage: Message = {
+                    id: Date.now() + 0.5,
+                    type: 'bot-reasoning',
+                    content: '',
+                    timestamp: new Date().toISOString()
+                };
+                setMessages(prev => [...prev, reasoningMessage]);
 
-            return new Promise((resolve, reject) => {
-                let finalResponse: any = null;
-                apiService.sendMessageStreamTrace(
-                    {
-                        message,
-                        mode: 'Supervisor Agent',
-                        session_id: sessionId || undefined
-                    },
-                    (event: StreamEvent) => {
-                        console.log('Stream event:', event);
+                return new Promise((resolve, reject) => {
+                    let finalResponse: any = null;
 
-                        switch (event.type) {
-                            case 'stream_start':
-                                const startMessage = event.message || '분석을 시작합니다...';
-                                setCurrentReasoningStep(startMessage);
-                                updateReasoningMessage(`🚀 ${startMessage}`);
-                                break;
+                    apiService.sendMessageStreamTrace(
+                        {
+                            message,
+                            mode: options.mode,
+                            session_id: sessionId || undefined,
+                            agent_config: agentConfig
+                        },
+                        (event: StreamEvent) => {
+                            console.log('Stream event:', event);
 
-                            case 'reasoning':
-                                if (event.content) {
-                                    const reasoningText = event.content.split('\n')[0];
-                                    setCurrentReasoningStep(reasoningText);
-                                    updateReasoningMessage(`💭 ${reasoningText}`);
-                                }
-                                break;
+                            switch (event.type) {
+                                case 'stream_start':
+                                    const startMessage = event.message || '분석을 시작합니다...';
+                                    setCurrentReasoningStep(startMessage);
+                                    updateReasoningMessage(`🚀 ${startMessage}`);
+                                    break;
 
-                            case 'agent_start':
-                                const agentName = event.display_name || event.agent || '에이전트';
-                                const agentMessage = event.message || '호출 중...';
-                                const icon = agentIcons[agentName] || agentIcons.default;
-
-                                const fullMessage = `${icon} ${agentName} ${agentMessage}`;
-                                setCurrentReasoningStep(fullMessage);
-                                updateReasoningMessage(fullMessage);
-                                break;
-
-                            case 'knowledge_base':
-                                const kbMessage = event.message || `Knowledge Base에서 ${event.references_count || 0}개의 참조를 찾았습니다.`;
-                                const kbIcon = agentIcons['Knowledge Base'];
-                                setCurrentReasoningStep(`${kbIcon} ${kbMessage}`);
-                                updateReasoningMessage(`${kbIcon} ${kbMessage}`);
-                                break;
-
-                            case 'query_execution':
-                                if (event.query_id) {
-                                    const queryMessage = `🔄 쿼리 실행 중... (ID: ${event.query_id})`;
-                                    setCurrentReasoningStep(queryMessage);
-                                    updateReasoningMessage(queryMessage);
-                                }
-                                break;
-
-                            case 'visualization_created':
-                                if (event.chart_type) {
-                                    const vizMessage = `📈 ${event.chart_type} 시각화 생성 중...`;
-                                    setCurrentReasoningStep(vizMessage);
-                                    updateReasoningMessage(vizMessage);
-                                }
-                                break;
-
-                            case 'error':
-                                const errorMessage = `❌ 오류: ${event.message || '알 수 없는 오류'}`;
-                                setCurrentReasoningStep(errorMessage);
-                                updateReasoningMessage(errorMessage);
-                                break;
-
-                            case 'final_response':
-                                finalResponse = event.result;
-                                if (event.success) {
-                                    // 최종 응답 처리
-                                    let displayContent = parseJsonContent(event.result?.data ?? event.result);
-
-                                    // JSON 문자열인지 확인하고 파싱
-                                    if (typeof displayContent === 'string') {
-                                        const trimmed = displayContent.trim();
-                                        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                                            try {
-                                                displayContent = JSON.parse(displayContent);
-                                                console.log('Parsed JSON response:', displayContent);
-                                            } catch (error) {
-                                                console.error('Failed to parse JSON response:', error);
-                                                // JSON 파싱 실패 시 원본 문자열 유지
-                                            }
-                                        }
+                                case 'reasoning':
+                                    if (event.content) {
+                                        const reasoningText = event.content.split('\n')[0];
+                                        setCurrentReasoningStep(reasoningText);
+                                        updateReasoningMessage(`💭 ${reasoningText}`);
                                     }
+                                    break;
 
-                                    // SupervisorAgentResponse 타입 검증
-                                    if (isSupervisorAgentResponse(displayContent)) {
-                                        console.log('Validated as SupervisorAgentResponse');
+                                case 'agent_start':
+                                    // display_name이나 agent 중 유효한 값 사용
+                                    const agentName = event.display_name || event.agent || '에이전트';
+                                    const agentMessage = event.message || '호출 중...';
+                                    const icon = agentIcons[agentName] || agentIcons.default;
+
+                                    const fullMessage = `${icon} ${agentName} ${agentMessage}`;
+                                    setCurrentReasoningStep(fullMessage);
+                                    updateReasoningMessage(fullMessage);
+                                    break;
+
+                                case 'knowledge_base':
+                                    const kbMessage = event.message || `Knowledge Base에서 ${event.references_count || 0}개의 참조를 찾았습니다.`;
+                                    const kbIcon = agentIcons['Knowledge Base'];
+                                    setCurrentReasoningStep(`${kbIcon} ${kbMessage}`);
+                                    updateReasoningMessage(`${kbIcon} ${kbMessage}`);
+                                    break;
+
+                                case 'query_execution':
+                                    if (event.query_id) {
+                                        const queryMessage = `🔄 쿼리 실행 중... (ID: ${event.query_id})`;
+                                        setCurrentReasoningStep(queryMessage);
+                                        updateReasoningMessage(queryMessage);
                                     }
+                                    break;
 
-                                    const botMessage: Message = {
-                                        id: Date.now() + 1,
-                                        type: 'bot',
-                                        content: displayContent,
-                                        timestamp: event.timestamp || new Date().toISOString()
-                                    };
+                                case 'visualization_created':
+                                    if (event.chart_type) {
+                                        const vizMessage = `📈 ${event.chart_type} 시각화 생성 중...`;
+                                        setCurrentReasoningStep(vizMessage);
+                                        updateReasoningMessage(vizMessage);
+                                    }
+                                    break;
 
-                                    // 추론 메시지를 제거하고 최종 응답으로 교체
-                                    setMessages(prev =>
-                                        prev.filter(msg => msg.type !== 'bot-reasoning').concat(botMessage)
-                                    );
+                                case 'error':
+                                    const errorMessage = `❌ 오류: ${event.message || '알 수 없는 오류'}`;
+                                    setCurrentReasoningStep(errorMessage);
+                                    updateReasoningMessage(errorMessage);
+                                    break;
 
-                                    resolve({
-                                        response: displayContent,
-                                        responseType: event.result?.type || 'text'
-                                    });
-                                } else {
-                                    reject(new Error('Analysis failed'));
-                                }
-                                break;
+                                case 'final_response':
+                                    finalResponse = event.result;
+                                    if (event.success) {
+                                        // 최종 응답 처리
+                                        let displayContent = parseJsonContent(event.result?.data ?? event.result);
 
-                            default:
-                                console.log(`Unhandled event type: ${event.type}`, event);
-                                if (event.type && event.message) {
-                                    updateReasoningMessage(`ℹ️ ${event.type}: ${event.message}`);
-                                }
-                                break;
+                                        const botMessage: Message = {
+                                            id: Date.now() + 1,
+                                            type: 'bot',
+                                            content: displayContent,
+                                            timestamp: event.timestamp || new Date().toISOString()
+                                        };
+
+                                        // 추론 메시지를 제거하고 최종 응답으로 교체
+                                        setMessages(prev =>
+                                            prev.filter(msg => msg.type !== 'bot-reasoning').concat(botMessage)
+                                        );
+
+                                        resolve({
+                                            response: displayContent,
+                                            responseType: event.result?.type || 'text'
+                                        });
+                                    } else {
+                                        reject(new Error('Analysis failed'));
+                                    }
+                                    break;
+
+                                default:
+                                    // 처리되지 않은 이벤트 타입도 표시
+                                    console.log(`Unhandled event type: ${event.type}`, event);
+                                    if (event.type && event.message) {
+                                        updateReasoningMessage(`ℹ️ ${event.type}: ${event.message}`);
+                                    }
+                                    break;
+                            }
                         }
-                    }
-                ).catch(error => {
-                    console.error('Streaming error:', error);
-                    updateReasoningMessage(`❌ 스트리밍 오류: ${error.message}`);
-                    reject(error);
-                }).finally(() => {
-                    setIsProcessing(false);
-                    setCurrentReasoningStep('');
+                    ).catch(error => {
+                        console.error('Streaming error:', error);
+                        updateReasoningMessage(`❌ 스트리밍 오류: ${error.message}`);
+                        reject(error);
+                    }).finally(() => {
+                        setIsProcessing(false);
+                        setCurrentReasoningStep('');
+                        setStreamingSteps([]);
+                    });
                 });
-            });
+
+            } else {
+                // QuickSight Mocking Agent 모드 - 기존 로직 사용
+                const chatRequest: ChatRequest = {
+                    message,
+                    session_id: sessionId || undefined,
+                    mode: options.mode || 'QuickSight Mocking Agent',
+                    agent_config: agentConfig
+                };
+
+                const response = await apiService.sendMessage(chatRequest);
+
+                // 세션 ID 업데이트
+                if (!sessionId && response.session_id) {
+                    setSessionId(response.session_id);
+                }
+
+                // 봇 메시지 추가
+                const botMessage: Message = {
+                    id: Date.now() + 1,
+                    type: 'bot',
+                    content: response.response,
+                    timestamp: response.timestamp
+                };
+
+                setMessages(prev => [...prev, botMessage]);
+
+                return {
+                    response: response.response,
+                    responseType: response.response_type
+                };
+            }
 
         } catch (error) {
             console.error('Error sending message:', error);
@@ -268,10 +304,13 @@ export const useChat = (options: UseChatOptions = {}) => {
             };
 
         } finally {
-            setIsProcessing(false);
-            setCurrentReasoningStep('');
+            if (options.mode !== 'Supervisor Agent') {
+                setIsProcessing(false);
+                setCurrentReasoningStep('');
+                setCurrentStepIcon(null);
+            }
         }
-    }, [sessionId, isProcessing, options]);
+    }, [sessionId, isProcessing, options, agentsConfig]);
 
     const clearSession = useCallback(async () => {
         if (sessionId) {
@@ -280,6 +319,7 @@ export const useChat = (options: UseChatOptions = {}) => {
                 localStorage.removeItem('kicksight_session_id');
                 setSessionId(null);
                 setMessages([]);
+                setStreamingSteps([]);
             } catch (error) {
                 console.error('Failed to clear session:', error);
             }
@@ -290,6 +330,7 @@ export const useChat = (options: UseChatOptions = {}) => {
         const newSessionId = `session_${Date.now()}`;
         setSessionId(newSessionId);
         setMessages([]);
+        setStreamingSteps([]);
     }, []);
 
     return {
@@ -297,9 +338,12 @@ export const useChat = (options: UseChatOptions = {}) => {
         sessionId,
         isProcessing,
         currentReasoningStep,
+        currentStepIcon,
         sendMessage,
         clearSession,
         newSession,
-        setMessages
+        setMessages,
+        streamingSteps,
+        agentsConfig
     };
 };

@@ -71,3 +71,16 @@ export interface AppConfig {
     debug: boolean;
     mode: 'development' | 'production';
 }
+
+export interface AgentInfo {
+    agent_id: string;
+    agent_name: string;
+    aliases: Array<{
+        alias_id: string;
+        alias_name: string;
+    }>;
+}
+
+export interface AgentsConfigResponse {
+    agents: AgentInfo[];
+}
