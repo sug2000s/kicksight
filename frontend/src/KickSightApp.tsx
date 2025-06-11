@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'sql-formatter';
 
@@ -23,6 +23,162 @@ import {
 
 // Import custom hook
 import { useChat } from './hooks/useChat';
+
+// IFrame 캐시를 전역으로 관리
+const quickSightIframeCache = new Map();
+
+// QuickSight IFrame Manager Hook
+const useQuickSightIframeManager = () => {
+    const containerRef = useRef(null);
+    const [activeUrl, setActiveUrl] = useState(null);
+
+    // IFrame 생성 또는 가져오기
+    const getOrCreateIframe = (url, title) => {
+        if (quickSightIframeCache.has(url)) {
+            return quickSightIframeCache.get(url);
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.title = title || 'QuickSight Dashboard';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = '1px solid #e5e5e5';
+        iframe.style.borderRadius = '4px';
+        iframe.style.display = 'none'; // 초기에는 숨김
+        iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+
+        // 에러 핸들링
+        iframe.onerror = () => {
+            console.error('IFrame loading error for URL:', url);
+        };
+
+        quickSightIframeCache.set(url, iframe);
+        return iframe;
+    };
+
+    // IFrame 표시
+    const showIframe = (url, title) => {
+        if (!containerRef.current || !url) return;
+
+        // 모든 iframe 숨기기
+        Array.from(containerRef.current.children).forEach(child => {
+            if (child.tagName === 'IFRAME') {
+                child.style.display = 'none';
+            }
+        });
+
+        // 해당 URL의 iframe 가져오기 또는 생성
+        const iframe = getOrCreateIframe(url, title);
+
+        // iframe이 컨테이너에 없으면 추가
+        if (!containerRef.current.contains(iframe)) {
+            containerRef.current.appendChild(iframe);
+        }
+
+        // iframe 표시
+        iframe.style.display = 'block';
+        setActiveUrl(url);
+    };
+
+    // IFrame 숨기기
+    const hideAllIframes = () => {
+        if (containerRef.current) {
+            Array.from(containerRef.current.children).forEach(child => {
+                if (child.tagName === 'IFRAME') {
+                    child.style.display = 'none';
+                }
+            });
+        }
+        setActiveUrl(null);
+    };
+
+    return {
+        containerRef,
+        activeUrl,
+        showIframe,
+        hideAllIframes
+    };
+};
+
+// QuickSight 시각화 컴포넌트
+const QuickSightVisualization = ({ visualization, onClose }) => {
+    const { containerRef, showIframe, hideAllIframes } = useQuickSightIframeManager();
+    const [isLoaded, setIsLoaded] = React.useState(false);
+
+    useEffect(() => {
+        if (visualization?.url) {
+            // 약간의 지연을 두고 iframe 표시 (DOM 준비 대기)
+            const timer = setTimeout(() => {
+                showIframe(visualization.url, visualization.title);
+                setIsLoaded(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [visualization]);
+
+    const handleClose = () => {
+        hideAllIframes();
+        if (onClose) {
+            onClose();
+        }
+    };
+
+    if (!visualization) return null;
+
+    return (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">
+                    {visualization.title || 'QuickSight Dashboard'}
+                </h3>
+                <div className="flex items-center space-x-2">
+                    <button
+                        onClick={() => window.open(visualization.url, '_blank')}
+                        className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                        </svg>
+                        <span>새 창에서 열기</span>
+                    </button>
+                    <button
+                        onClick={handleClose}
+                        className="flex items-center space-x-1 px-3 py-1 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span>닫기</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* IFrame 컨테이너 */}
+            <div
+                ref={containerRef}
+                className="flex-1 w-full rounded border border-gray-200 relative"
+                style={{ minHeight: '500px' }}
+            >
+                {!isLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                            <p className="text-gray-600">차트를 불러오는 중...</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 캐시 상태 표시 (디버깅용 - 필요시 제거) */}
+            <div className="mt-2 text-xs text-gray-500 text-right">
+                {quickSightIframeCache.has(visualization.url) ? '✓ 캐시됨' : '○ 새로 로드됨'}
+            </div>
+        </div>
+    );
+};
 
 const KickSightApp: React.FC = () => {
     // 초기 세션 ID 생성
@@ -55,7 +211,6 @@ const KickSightApp: React.FC = () => {
     const [showNotification, setShowNotification] = useState(false);
     const [notificationMessage, setNotificationMessage] = useState('');
     const [notificationDescription, setNotificationDescription] = useState('');
-    const [iframeError, setIframeError] = useState(false);
 
     // 에이전트 관련 상태
     const [selectedAgent, setSelectedAgent] = useState<string>('');
@@ -73,7 +228,7 @@ const KickSightApp: React.FC = () => {
         sessionId,
         isProcessing,
         currentReasoningStep,
-        sendMessage,
+        sendMessage: sendChatMessage,
         clearSession,
         newSession,
         setMessages,
@@ -90,6 +245,18 @@ const KickSightApp: React.FC = () => {
             setTimeout(() => setShowNotification(false), 3000);
         }
     });
+
+    // 에이전트 정보를 포함한 메시지 전송 래퍼 함수
+    const sendMessage = async (message: string) => {
+        const agentInfo = getSelectedAgentInfo();
+        if (!agentInfo) {
+            throw new Error('No agent selected');
+        }
+
+        // TODO: useChat의 sendMessage가 에이전트 정보를 받을 수 있도록 수정 필요
+        // 임시로 직접 API 호출
+        return sendChatMessage(message);
+    };
 
     // 대화 목록을 로컬 스토리지에 저장
     useEffect(() => {
@@ -189,6 +356,59 @@ const KickSightApp: React.FC = () => {
         };
     };
 
+    // URL 유효성 검증 함수
+    const isValidUrl = (url: string): boolean => {
+        try {
+            const urlObj = new URL(url);
+            const currentUrl = new URL(window.location.href);
+            if (urlObj.origin === currentUrl.origin && urlObj.pathname === currentUrl.pathname) {
+                console.error('iframe URL is same as current app URL');
+                return false;
+            }
+            return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+        } catch {
+            return false;
+        }
+    };
+
+    // 차트 열기 핸들러
+    const handleOpenChart = (chartUrl: string, title?: string) => {
+        if (!chartUrl) return;
+
+        if (!isValidUrl(chartUrl)) {
+            setNotificationMessage('오류');
+            setNotificationDescription('유효하지 않은 차트 URL입니다.');
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 3000);
+            return;
+        }
+
+        const iframeResponse: QuickSightIFrameResponse = {
+            type: 'quicksight_iframe',
+            url: chartUrl,
+            title: title || 'QuickSight Dashboard'
+        };
+
+        // 이미 같은 URL이 열려있는지 확인
+        if (currentVisualization?.url === chartUrl && showVisualization) {
+            setNotificationMessage('알림');
+            setNotificationDescription('이미 동일한 차트가 열려있습니다.');
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 2000);
+            return;
+        }
+
+        setCurrentVisualization(iframeResponse);
+        setShowVisualization(true);
+
+        // 캐시 여부 알림
+        if (quickSightIframeCache.has(chartUrl)) {
+            console.log('기존 캐시된 iframe 재사용:', chartUrl);
+        } else {
+            console.log('새 iframe 생성:', chartUrl);
+        }
+    };
+
     const handleDeleteConversation = (convId: number) => {
         if (conversations.length <= 1) {
             setNotificationMessage('마지막 대화는 삭제할 수 없습니다');
@@ -233,10 +453,8 @@ const KickSightApp: React.FC = () => {
         }
 
         try {
-            await sendMessage(inputMessage, {
-                agent_id: agentInfo.agent_id,
-                agent_alias_id: agentInfo.agent_alias_id
-            });
+            // sendMessage는 메시지만 받습니다. 에이전트 정보는 useChat에서 처리해야 합니다.
+            await sendMessage(inputMessage);
             setInputMessage('');
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -260,12 +478,25 @@ const KickSightApp: React.FC = () => {
         setConversations([...conversations, newConversation]);
         setActiveConversation(newId);
         setShowVisualization(false);
-        setCurrentVisualization(null);
+        // currentVisualization은 유지하여 iframe을 보존
 
         // 새 세션으로 전환
         newSession();
         setSessionId(newSessionId);
         console.log(`Created new conversation ${newId} with session ${newSessionId}`);
+    };
+
+    // 대화 전환 핸들러
+    const handleConversationSwitch = (convId: number) => {
+        setActiveConversation(convId);
+        setShowVisualization(false); // iframe은 숨기지만 제거하지 않음
+
+        const conv = conversations.find(c => c.id === convId);
+        if (conv) {
+            setSessionId(conv.sessionId);
+            setMessages(conv.messages);
+            console.log(`Switching to conversation ${convId} with session ${conv.sessionId}`);
+        }
     };
 
     const handleLike = (messageId: number) => {
@@ -274,57 +505,6 @@ const KickSightApp: React.FC = () => {
         setNotificationDescription('피드백이 성공적으로 저장되었습니다.');
         setShowNotification(true);
         setTimeout(() => setShowNotification(false), 3000);
-    };
-
-    // URL 유효성 검증 함수
-    const isValidUrl = (url: string): boolean => {
-        try {
-            const urlObj = new URL(url);
-            const currentUrl = new URL(window.location.href);
-            if (urlObj.origin === currentUrl.origin && urlObj.pathname === currentUrl.pathname) {
-                console.error('iframe URL is same as current app URL');
-                return false;
-            }
-            return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-        } catch {
-            return false;
-        }
-    };
-
-    // ─── src/components/KickSightApp.tsx 중 일부 ───
-    const renderQuickSightVisualization = () => {
-        if (!currentVisualization) return null;
-
-        return (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
-                {/* ── 헤더 ── */}
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">
-                        {currentVisualization.title || 'QuickSight Dashboard'}
-                    </h3>
-                    <button
-                        onClick={() => window.open(currentVisualization.url, '_blank')}
-                        className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                    >
-                        {/* 아이콘 */}
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
-                        </svg>
-                        <span>새 창에서 열기</span>
-                    </button>
-                </div>
-
-                {/* ── 대시보드 ── */}
-                <iframe
-                    src={currentVisualization.url}
-                    title={currentVisualization.title || 'QuickSight Dashboard'}
-                    className="flex-1 w-full rounded border border-gray-200"
-                    style={{ minHeight: 0 }}
-                    referrerPolicy="no-referrer-when-downgrade"
-                />
-            </div>
-        );
     };
 
     const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
@@ -443,32 +623,26 @@ const KickSightApp: React.FC = () => {
                                     <span className="text-sm font-medium text-green-700">QuickSight 차트 보기</span>
                                 </div>
                                 <button
-                                    onClick={() => {
-                                        if (content.chart_url) {
-                                            if (!isValidUrl(content.chart_url)) {
-                                                setNotificationMessage('오류');
-                                                setNotificationDescription('유효하지 않은 차트 URL입니다.');
-                                                setShowNotification(true);
-                                                setTimeout(() => setShowNotification(false), 3000);
-                                                return;
-                                            }
-
-                                            const iframeResponse: QuickSightIFrameResponse = {
-                                                type: 'quicksight_iframe',
-                                                url: content.chart_url,
-                                                title: 'QuickSight Dashboard'
-                                            };
-                                            setCurrentVisualization(iframeResponse);
-                                            setShowVisualization(true);
-                                            setIframeError(false);
-                                        }
-                                    }}
-                                    className="flex items-center space-x-1 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
+                                    onClick={() => handleOpenChart(content.chart_url, 'QuickSight Dashboard')}
+                                    className={`flex items-center space-x-1 px-3 py-2 rounded-md transition-colors text-sm ${
+                                        showVisualization && currentVisualization?.url === content.chart_url
+                                            ? 'bg-gray-500 text-white hover:bg-gray-600'
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
                                 >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        {showVisualization && currentVisualization?.url === content.chart_url ? (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        ) : (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        )}
                                     </svg>
-                                    <span>차트 열기</span>
+                                    <span>
+                                        {showVisualization && currentVisualization?.url === content.chart_url
+                                            ? '이미 열림'
+                                            : '차트 열기'
+                                        }
+                                    </span>
                                 </button>
                             </div>
                         )}
@@ -679,15 +853,7 @@ const KickSightApp: React.FC = () => {
                                     }`}
                                 >
                                     <button
-                                        onClick={() => {
-                                            setActiveConversation(conv.id);
-                                            setShowVisualization(false);
-                                            setCurrentVisualization(null);
-                                            // 대화 전환 시 해당 대화의 세션과 메시지 로드
-                                            setSessionId(conv.sessionId);
-                                            setMessages(conv.messages);
-                                            console.log(`Switching to conversation ${conv.id} with session ${conv.sessionId}`);
-                                        }}
+                                        onClick={() => handleConversationSwitch(conv.id)}
                                         className="w-full text-left px-3 py-2"
                                     >
                                         <div className="flex items-center justify-between">
@@ -813,29 +979,21 @@ const KickSightApp: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* QuickSight Visualization Panel */}
+                    {/* QuickSight Visualization Panel - 새 컴포넌트 사용 */}
                     <AnimatePresence>
                         {showVisualization && (
                             <motion.div
                                 initial={{ width: 0, opacity: 0 }}
-                                animate={{ width: 500, opacity: 1 }}
+                                animate={{ width: 600, opacity: 1 }}
                                 exit={{ width: 0, opacity: 0 }}
                                 transition={{ duration: 0.3 }}
                                 className="overflow-hidden"
                             >
                                 <div className="h-full p-6 pl-3">
-                                    <div className="h-full relative">
-                                        <button
-                                            onClick={() => {
-                                                setShowVisualization(false);
-                                                setIframeError(false);
-                                            }}
-                                            className="absolute top-2 right-2 z-10 p-1 hover:bg-gray-100 rounded-md transition-colors"
-                                        >
-                                            <CloseIcon />
-                                        </button>
-                                        {renderQuickSightVisualization()}
-                                    </div>
+                                    <QuickSightVisualization
+                                        visualization={currentVisualization}
+                                        onClose={() => setShowVisualization(false)}
+                                    />
                                 </div>
                             </motion.div>
                         )}
