@@ -171,7 +171,11 @@ class BedrockClient:
                         full_response += chunk_text
 
             # 최종 응답 파싱
+            # 디버깅: 전체 full_response 내용을 콘솔에 출력
+            print(f"🔍 [DEBUG] full_response data: {full_response!r}")
             parsed_response = self._parse_agent_response(full_response)
+            # 디버깅: 최종응답의 data 필드를 콘솔에 출력
+            print(f"🔍 [DEBUG] final_response data: {parsed_response.get('data')!r}")
             yield {
                 "type": "final_response",
                 "timestamp": datetime.now().isoformat(),
@@ -281,53 +285,10 @@ class BedrockClient:
 
     @staticmethod
     def _parse_agent_response(full_response: str) -> Dict[str, Any]:
-        """에이전트 응답 파싱"""
-        if not full_response.strip():
-            return {
-                "success": False,
-                "error": "Empty response from agent",
-                "data": None,
-                "raw_text": ""
-            }
+        """에이전트 응답 파싱 - 최대한 순정으로 원본 응답 반환"""
 
-        try:
-            json_text = full_response.strip()
-
-            # JSON 코드 블록 추출
-            if '```json' in json_text:
-                json_start = json_text.find('```json') + 7
-                json_end = json_text.find('```', json_start)
-                if json_end > json_start:
-                    json_text = json_text[json_start:json_end].strip()
-
-            # 직접 JSON 파싱 시도
-            if (json_text.startswith('{') and json_text.endswith('}')) or \
-                    (json_text.startswith('[') and json_text.endswith(']')):
-                parsed_response = json.loads(json_text)
-                return {
-                    "success": True,
-                    "response_type": "json",
-                    "data": parsed_response,
-                    "raw_text": full_response
-                }
-
-            # JSON 패턴 찾기
-            json_pattern = r'\{(.|\n)*?\}'
-            json_matches = re.findall(json_pattern, full_response)
-
-            for match in sorted(json_matches, key=len, reverse=True):
-                try:
-                    parsed_response = json.loads('{' + match + '}')
-                    return {
-                        "success": True,
-                        "response_type": "json",
-                        "data": parsed_response,
-                        "raw_text": full_response
-                    }
-                except:
-                    continue
-
-            # 텍스트로 반환
+        # 빈 응답 처리
+        if not full_response or not full_response.strip():
             return {
                 "success": True,
                 "response_type": "text",
@@ -335,14 +296,13 @@ class BedrockClient:
                 "raw_text": full_response
             }
 
-        except json.JSONDecodeError as e:
-            return {
-                "success": True,
-                "response_type": "text",
-                "data": full_response,
-                "raw_text": full_response,
-                "parse_error": str(e)
-            }
+        # 원본 응답을 그대로 text로 반환
+        return {
+            "success": True,
+            "response_type": "text",
+            "data": full_response.strip(),
+            "raw_text": full_response
+        }
 
     @staticmethod
     def _load_quicksight_config():
