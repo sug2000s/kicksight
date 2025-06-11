@@ -544,7 +544,7 @@ const KickSightApp: React.FC = () => {
                                             </div>
                                             <div className="text-left bg-gray-50 rounded-lg p-4">
                                                 <h3 className="font-semibold mb-2">예시 질문:</h3>
-                                                <p className="text-sm mb-1">• 2025년 1월 VOC 데이터를 분석해줘</p>
+                                                <p className="text-sm mb-1">• 2024년 1월 VOC 데이터를 분석해줘</p>
                                                 <p className="text-sm mb-1">• 고객 피드백 데이터를 조회해줘</p>
                                                 <p className="text-sm mb-1">• 최근 한 달간 VOC 추이를 보여줘</p>
                                                 <p className="text-sm">• 카테고리별 고객 피드백을 시각화해줘</p>

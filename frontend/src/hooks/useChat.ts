@@ -6,10 +6,13 @@ import {
     isSupervisorAgentResponse,
 } from '../utils/typeGuards';
 
+import { parseJsonContent } from '../utils/json';   // 새 유틸 추가
+
 interface UseChatOptions {
     sessionId?: string;
     onError?: (error: Error) => void;
 }
+
 
 // 에이전트 아이콘 매핑
 const agentIcons: Record<string, string> = {
@@ -178,7 +181,7 @@ export const useChat = (options: UseChatOptions = {}) => {
                                 finalResponse = event.result;
                                 if (event.success) {
                                     // 최종 응답 처리
-                                    let displayContent = event.result?.data || event.result;
+                                    let displayContent = parseJsonContent(event.result?.data ?? event.result);
 
                                     // JSON 문자열인지 확인하고 파싱
                                     if (typeof displayContent === 'string') {
