@@ -2,6 +2,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { apiService, StreamEvent } from '../services/api';
 import type { Message, AnalysisResponse } from '../types';
+import {
+    isSupervisorAgentResponse,
+} from '../utils/typeGuards';
 
 interface UseChatOptions {
     sessionId?: string;
@@ -107,6 +110,7 @@ export const useChat = (options: UseChatOptions = {}) => {
             setMessages(prev => [...prev, reasoningMessage]);
 
             return new Promise((resolve, reject) => {
+                let finalResponse: any = null;
                 apiService.sendMessageStreamTrace(
                     {
                         message,
@@ -171,8 +175,29 @@ export const useChat = (options: UseChatOptions = {}) => {
                                 break;
 
                             case 'final_response':
+                                finalResponse = event.result;
                                 if (event.success) {
+                                    // 최종 응답 처리
                                     let displayContent = event.result?.data || event.result;
+
+                                    // JSON 문자열인지 확인하고 파싱
+                                    if (typeof displayContent === 'string') {
+                                        const trimmed = displayContent.trim();
+                                        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                                            try {
+                                                displayContent = JSON.parse(displayContent);
+                                                console.log('Parsed JSON response:', displayContent);
+                                            } catch (error) {
+                                                console.error('Failed to parse JSON response:', error);
+                                                // JSON 파싱 실패 시 원본 문자열 유지
+                                            }
+                                        }
+                                    }
+
+                                    // SupervisorAgentResponse 타입 검증
+                                    if (isSupervisorAgentResponse(displayContent)) {
+                                        console.log('Validated as SupervisorAgentResponse');
+                                    }
 
                                     const botMessage: Message = {
                                         id: Date.now() + 1,
@@ -185,11 +210,6 @@ export const useChat = (options: UseChatOptions = {}) => {
                                     setMessages(prev =>
                                         prev.filter(msg => msg.type !== 'bot-reasoning').concat(botMessage)
                                     );
-
-                                    // 세션 ID 업데이트 (서버에서 새로 생성된 경우)
-                                    if (!sessionId && event.result?.session_id) {
-                                        setSessionId(event.result.session_id);
-                                    }
 
                                     resolve({
                                         response: displayContent,

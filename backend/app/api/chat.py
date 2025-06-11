@@ -346,20 +346,30 @@ def _get_mock_trace_events():
             "message": "Query Refinement Agent 호출 중..."
         },
         # ... 더 많은 이벤트들
+        # {
+        #     "type": "final_response",
+        #     "result": {
+        #         "type": "text",
+        #         "data": {
+        #             "query_id": "VOC_2025_01_ANALYSIS",
+        #             "query": "SELECT COUNT(*), category_name...",
+        #             "explanation": "2025년 1월 VOC 데이터의 종합 분석 결과입니다.",
+        #             "sample_analysis": "총 3,245건의 VOC 접수...",
+        #             "csv_url": "https://example.com/voc-analysis/2025-01/data.csv",
+        #             "chart_url": "https://example.com/quicksight/2025-01",
+        #             "visualization_analysis_result": "모바일 앱을 통한 불만 접수가 가장 많았으며..."
+        #         }
+        #     },
+        #     "success": True
+        # }
+        #
         {
             "type": "final_response",
             "result": {
                 "type": "text",
-                "data": {
-                    "query_id": "VOC_2025_01_ANALYSIS",
-                    "query": "SELECT COUNT(*), category_name...",
-                    "explanation": "2025년 1월 VOC 데이터의 종합 분석 결과입니다.",
-                    "sample_analysis": "총 3,245건의 VOC 접수...",
-                    "csv_url": "https://example.com/voc-analysis/2025-01/data.csv",
-                    "chart_url": "https://example.com/quicksight/2025-01",
-                    "visualization_analysis_result": "모바일 앱을 통한 불만 접수가 가장 많았으며..."
-                }
+                "data": "{\n  \"query_id\": \"8465df6e-c02d-4063-b2c8-09c692fe7b86\",\n  \"query\": \"SELECT     DATE_TRUNC('month', received_date) AS month,    vc.category_name,    channel,    COUNT(*) AS total_vocs FROM     voc_reports vr JOIN     voc_categories vc ON vr.category_id = vc.category_id WHERE     EXTRACT(YEAR FROM received_date) = 2024 GROUP BY     DATE_TRUNC('month', received_date),     vc.category_name,     channel ORDER BY     month,     category_name,     channel\",\n  \"explanation\": \"이 쿼리는 2024년 VOC 데이터를 월별, 카테고리별, 채널별로 분석하기 위해 작성되었습니다. voc_reports 테이블과 voc_categories 테이블을 조인하여 상세한 VOC 현황을 제공합니다.\",\n  \"sample_analysis\": \"2024년 VOC 데이터 분석 결과, 주요 특징은 다음과 같습니다:\\n1. 채널별로는 웹, 앱, 이메일, 콜센터 등 다양한 채널을 통해 VOC가 접수되었습니다.\\n2. 주요 VOC 카테고리로는 '예약 오류', '환불 지연', '서비스 불만', '웹 오류' 등이 두드러졌습니다.\\n3. 월별 VOC 접수 건수는 대체로 40-60건 사이로 일정하게 유지되는 경향을 보였습니다.\",\n  \"csv_url\": \"https://dataorigin1123.s3.us-west-2.amazonaws.com/query_results/20250611041752_51b08645.csv\",\n  \"chart_url\": \"https://us-west-2.quicksight.aws.amazon.com/sn/dashboards/voc-analysis-2024\",\n  \"visualization_analysis_result\": \"VOC 데이터 시각화 분석 결과, 월별 VOC 건수가 채널과 카테고리별로 고르게 분포되어 있음을 확인할 수 있습니다. 특히 콜센터와 이메일 채널에서 접수된 VOC가 전체의 65% 이상을 차지하고 있어, 해당 채널에 대한 집중 관리가 필요할 것으로 보입니다. 또한 '예약 오류'와 '서비스 불만' 카테고리의 VOC가 전체의 50% 이상을 차지하므로, 이 부분에 대한 개선 활동이 시급할 것으로 판단됩니다.\"\n}"
             },
+            "timestamp": "2025-06-11T04:19:55.548185",
             "success": True
         }
     ]

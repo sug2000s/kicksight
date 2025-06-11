@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'sql-formatter';
 
 // Import types
 import type { Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse } from './types';
@@ -213,8 +214,18 @@ const KickSightApp: React.FC = () => {
     };
 
     const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
-        const hasDBResponse = content.query_id || content.query;
-        const hasQuickSightResponse = content.chart_url;
+        // 데이터 존재 여부 확인
+        const hasDBResponse = !!(content.query_id || content.query || content.explanation || content.sample_analysis || content.csv_url);
+        const hasQuickSightResponse = !!(content.chart_url || content.visualization_analysis_result);
+
+        // 둘 다 없으면 기본 메시지
+        if (!hasDBResponse && !hasQuickSightResponse) {
+            return (
+                <div className="text-gray-600">
+                    <p>응답 데이터가 없습니다.</p>
+                </div>
+            );
+        }
 
         return (
             <div className="space-y-4">
@@ -242,7 +253,7 @@ const KickSightApp: React.FC = () => {
                         {content.explanation && (
                             <div className="mb-3">
                                 <p className="text-sm font-medium text-blue-700 mb-1">분석 설명:</p>
-                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3">
+                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3 whitespace-pre-wrap">
                                     {content.explanation}
                                 </p>
                             </div>
@@ -252,15 +263,15 @@ const KickSightApp: React.FC = () => {
                             <div className="mb-3">
                                 <p className="text-sm font-medium text-blue-700 mb-1">실행된 쿼리:</p>
                                 <pre className="text-sm text-blue-800 bg-gray-800 text-green-400 border border-blue-200 rounded p-3 overflow-x-auto font-mono whitespace-pre-wrap">
-{content.query}
-                            </pre>
+{format(content.query)}
+</pre>
                             </div>
                         )}
 
                         {content.sample_analysis && (
                             <div className="mb-3">
                                 <p className="text-sm font-medium text-blue-700 mb-1">샘플 분석 결과:</p>
-                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3">
+                                <p className="text-sm text-blue-800 bg-white border border-blue-200 rounded p-3 whitespace-pre-wrap">
                                     {content.sample_analysis}
                                 </p>
                             </div>
@@ -303,7 +314,7 @@ const KickSightApp: React.FC = () => {
                         {content.visualization_analysis_result && (
                             <div className="mb-3">
                                 <p className="text-sm font-medium text-green-700 mb-1">시각화 분석 결과:</p>
-                                <p className="text-sm text-green-800 bg-white border border-green-200 rounded p-3">
+                                <p className="text-sm text-green-800 bg-white border border-green-200 rounded p-3 whitespace-pre-wrap">
                                     {content.visualization_analysis_result}
                                 </p>
                             </div>
