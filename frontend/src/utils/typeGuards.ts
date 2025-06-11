@@ -1,46 +1,60 @@
 // utils/typeGuards.ts
 import {
     AnalysisResponse,
-    VOCAnalysisResponse,
-    VOCTableResponse,
-    PieChartResponse,
-    LineChartResponse,
-    ErrorResponse,
-    SupervisorAgentResponse, QuickSightIFrameResponse
+    SupervisorAgentResponse,
+    QuickSightIFrameResponse,
+    ErrorResponse
 } from '../types';
 
-export function isVOCAnalysis(response: AnalysisResponse): response is VOCAnalysisResponse {
-    return 'analysis_type' in response && response.analysis_type === 'VOC_DATA_ANALYSIS';
-}
-
-export function isVOCTable(response: AnalysisResponse): response is VOCTableResponse {
-    return 'data_type' in response && response.data_type === 'VOC_TABLE';
-}
-
-export function isPieChart(response: AnalysisResponse): response is PieChartResponse {
-    return 'chart_type' in response && response.chart_type === 'pie_chart';
-}
-
-export function isLineChart(response: AnalysisResponse): response is LineChartResponse {
-    return 'chart_type' in response && response.chart_type === 'line_chart';
-}
-
-export function isError(response: AnalysisResponse): response is ErrorResponse {
-    return 'message' in response && !('analysis_type' in response) && !('data_type' in response) && !('chart_type' in response);
-}
-
+// Supervisor Agent 응답인지 확인
 export function isSupervisorAgentResponse(response: AnalysisResponse): response is SupervisorAgentResponse {
     return (
         response !== null &&
         typeof response === 'object' &&
+        !('type' in response) && // QuickSightIFrameResponse가 아님
+        !('message' in response && Object.keys(response).length === 1) && // 단순 에러가 아님
         (
-            ('query_id' in response && 'query' in response) ||
-            'chart_url' in response
+            'query_id' in response ||
+            'query' in response ||
+            'chart_url' in response ||
+            'explanation' in response ||
+            'visualization_analysis_result' in response
         )
     );
 }
-export function isQuickSightIFrame(response: AnalysisResponse | null): response is QuickSightIFrameResponse {
-    return response !== null &&
+
+// QuickSight iframe 응답인지 확인
+export function isQuickSightIFrameResponse(response: AnalysisResponse): response is QuickSightIFrameResponse {
+    return (
+        response !== null &&
+        typeof response === 'object' &&
+        'type' in response &&
         response.type === 'quicksight_iframe' &&
-        'url' in response;
+        'url' in response
+    );
+}
+
+// 에러 응답인지 확인
+export function isError(response: AnalysisResponse): response is ErrorResponse {
+    return (
+        response !== null &&
+        typeof response === 'object' &&
+        'message' in response &&
+        Object.keys(response).length === 1
+    );
+}
+
+// 스트리밍 이벤트 타입 확인
+export function isValidStreamEventType(type: string): boolean {
+    const validTypes = [
+        'stream_start',
+        'reasoning',
+        'agent_start',
+        'knowledge_base',
+        'query_execution',
+        'visualization_created',
+        'error',
+        'final_response'
+    ];
+    return validTypes.includes(type);
 }

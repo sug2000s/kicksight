@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import types
-import type {Message, Conversation, AnalysisResponse, SupervisorAgentResponse,QuickSightIFrameResponse} from './types';
+import type { Message, Conversation, SupervisorAgentResponse, QuickSightIFrameResponse } from './types';
 
 // Import icons
 import {
-    MenuIcon, PlusIcon, SettingsIcon, SendIcon, HeartIcon,
-    RobotIcon, CloseIcon, UserIcon
-} from './components/icons';
+    MenuIcon, PlusIcon, SendIcon, HeartIcon,
+    RobotIcon, CloseIcon
+} from './components/icons/index';
 
 // Import components
 import Notification from './components/Notification';
@@ -17,15 +16,9 @@ import LoadingIndicator from './components/LoadingIndicator';
 
 // Import utilities
 import {
-    isVOCAnalysis,
-    isVOCTable,
-    isPieChart,
-    isLineChart,
     isError,
     isSupervisorAgentResponse,
-    isQuickSightIFrame
 } from './utils/typeGuards';
-import { COLORS } from './data/mockData';
 
 // Import custom hook
 import { useChat } from './hooks/useChat';
@@ -38,28 +31,24 @@ const KickSightApp: React.FC = () => {
     const [inputMessage, setInputMessage] = useState('');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [showVisualization, setShowVisualization] = useState(false);
-    const [currentVisualization, setCurrentVisualization] = useState<AnalysisResponse | null>(null);
+    const [currentVisualization, setCurrentVisualization] = useState<QuickSightIFrameResponse | null>(null);
     const [likedMessages, setLikedMessages] = useState(new Set<number>());
     const [showNotification, setShowNotification] = useState(false);
     const [notificationMessage, setNotificationMessage] = useState('');
     const [notificationDescription, setNotificationDescription] = useState('');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const [selectedMode, setSelectedMode] = useState('Supervisor Agent');
+    const [iframeError, setIframeError] = useState(false);
 
-
-    // useChat 훅 사용
+    // useChat 훅 사용 - Supervisor Agent 전용
     const {
         messages,
         sessionId,
         isProcessing,
         currentReasoningStep,
-        currentStepIcon,
         sendMessage,
         clearSession,
         newSession,
         setMessages
     } = useChat({
-        mode: selectedMode,
         onError: (error: Error) => {
             console.error('Chat error:', error);
             setNotificationMessage('오류가 발생했습니다');
@@ -69,14 +58,11 @@ const KickSightApp: React.FC = () => {
         }
     });
 
-    // 백엔드 연결 상태 확인을 위한 로그
+    // 백엔드 연결 상태 확인
     useEffect(() => {
-        console.log('Current mode:', selectedMode);
         console.log('Session ID:', sessionId);
         console.log('API URL:', import.meta.env.VITE_API_URL || 'http://localhost:8000');
-    }, [selectedMode, sessionId]);
-
-
+    }, [sessionId]);
 
     // 현재 대화 업데이트
     useEffect(() => {
@@ -93,26 +79,10 @@ const KickSightApp: React.FC = () => {
         if (!inputMessage.trim() || isProcessing) return;
 
         try {
-            console.log('Sending message:', inputMessage);
-            const { response, responseType } = await sendMessage(inputMessage);
-            console.log('Response received:', { response, responseType });
-
-            // 시각화가 필요한 응답인 경우
-            if (response && typeof response === 'object' &&
-                (responseType === 'pie_chart' || responseType === 'line_chart' || responseType === 'table' || responseType === 'VOC_TABLE')) {
-                setTimeout(() => {
-                    setCurrentVisualization(response as AnalysisResponse);
-                    setShowVisualization(true);
-                }, 300);
-            }
-
+            await sendMessage(inputMessage);
             setInputMessage('');
         } catch (error) {
             console.error('Failed to send message:', error);
-            setNotificationMessage('메시지 전송 실패');
-            setNotificationDescription(`오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-            setShowNotification(true);
-            setTimeout(() => setShowNotification(false), 5000);
         }
     };
 
@@ -139,183 +109,108 @@ const KickSightApp: React.FC = () => {
         setTimeout(() => setShowNotification(false), 3000);
     };
 
-    const handleModeChange = (mode: string) => {
-        setSelectedMode(mode);
-        setDropdownOpen(false);
+    // URL 유효성 검증 함수
+    const isValidUrl = (url: string): boolean => {
+        try {
+            const urlObj = new URL(url);
+            const currentUrl = new URL(window.location.href);
+            if (urlObj.origin === currentUrl.origin && urlObj.pathname === currentUrl.pathname) {
+                console.error('iframe URL is same as current app URL');
+                return false;
+            }
+            return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+        } catch {
+            return false;
+        }
     };
 
-    // KickSightApp.tsx의 완전한 renderVisualization 함수
-
-    const renderVisualization = () => {
+    const renderQuickSightVisualization = () => {
         if (!currentVisualization) return null;
 
-        // QuickSight IFrame 처리 - 타입 안전성 보장
-        if (currentVisualization.type === 'quicksight_iframe' && 'url' in currentVisualization) {
-            const quicksightUrl = (currentVisualization as QuickSightIFrameResponse).url;
-            const quicksightTitle = (currentVisualization as QuickSightIFrameResponse).title || 'QuickSight Dashboard';
-
+        if (!isValidUrl(currentVisualization.url)) {
             return (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">{quicksightTitle}</h3>
-                        <button
-                            onClick={() => window.open(quicksightUrl, '_blank')}
-                            className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                        <h3 className="text-lg font-semibold text-red-600">오류</h3>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <span>새 창에서 열기</span>
-                        </button>
-                    </div>
-                    <div className="flex-1 relative">
-                        <iframe
-                            src={quicksightUrl}
-                            className="w-full h-full rounded border border-gray-200"
-                            title={quicksightTitle}
-                            allow="fullscreen"
-                            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                        />
-                        <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 px-2 py-1 rounded text-xs text-gray-600 shadow-sm">
-                            QuickSight 대시보드가 로드되었습니다
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        if (isVOCTable(currentVisualization)) {
-            return (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full">
-                    <h3 className="text-lg font-semibold mb-4">VOC 데이터 테이블 - {currentVisualization.period}</h3>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                            <tr>
-                                {currentVisualization.columns?.map((col, idx) => (
-                                    <th key={idx} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        {col}
-                                    </th>
-                                ))}
-                            </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                            {currentVisualization.rows?.map((row, idx) => (
-                                <tr key={idx}>
-                                    {row.map((cell, cellIdx) => (
-                                        <td key={cellIdx} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            {cell}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="mt-4">
-                        <p className="text-sm text-gray-500">총 건수: {currentVisualization.total_count}건</p>
-                    </div>
-                </div>
-            );
-        }
-
-        if (isPieChart(currentVisualization)) {
-            const pieData = currentVisualization.data?.labels.map((label, idx) => ({
-                name: label,
-                value: currentVisualization.data!.values[idx],
-                percentage: currentVisualization.data!.percentages[idx]
-            })) || [];
-
-            return (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full">
-                    <h3 className="text-lg font-semibold mb-4">{currentVisualization.title}</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                            <Pie
-                                data={pieData}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={false}
-                                label={(_entry) => `${_entry.name}: ${_entry.percentage}`}
-                                outerRadius={80}
-                                fill="#8884d8"
-                                dataKey="value"
+                            <p className="text-gray-600 mb-2">유효하지 않은 URL입니다.</p>
+                            <p className="text-sm text-gray-500">QuickSight URL을 확인해주세요.</p>
+                            <button
+                                onClick={() => {
+                                    setShowVisualization(false);
+                                    setCurrentVisualization(null);
+                                }}
+                                className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
                             >
-                                {pieData.map((_entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <RechartsTooltip />
-                        </PieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 space-y-1">
-                        {currentVisualization.insights?.map((insight, idx) => (
-                            <p key={idx} className="text-sm text-gray-600">• {insight}</p>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
-
-        if (isLineChart(currentVisualization)) {
-            const chartData: Array<{ hour: string; [key: string]: string | number }> = [];
-            const firstCategory = Object.keys(currentVisualization.time_series_data || {})[0];
-            if (firstCategory && currentVisualization.time_series_data) {
-                currentVisualization.time_series_data[firstCategory].forEach((item: any, idx: number) => {
-                    const dataPoint: { hour: string; [key: string]: string | number } = { hour: item.hour };
-                    Object.keys(currentVisualization.time_series_data).forEach(category => {
-                        dataPoint[category] = currentVisualization.time_series_data[category][idx].value;
-                    });
-                    chartData.push(dataPoint);
-                });
-            }
-
-            return (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full">
-                    <h3 className="text-lg font-semibold mb-4">시간대별 피드백 추이 - {currentVisualization.period}</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="hour" />
-                            <YAxis />
-                            <RechartsTooltip />
-                            <Legend />
-                            {currentVisualization.categories?.map((category: string, idx: number) => (
-                                <Line
-                                    key={category}
-                                    type="monotone"
-                                    dataKey={category}
-                                    stroke={COLORS[idx % COLORS.length]}
-                                    strokeWidth={2}
-                                />
-                            ))}
-                        </LineChart>
-                    </ResponsiveContainer>
-                    <div className="mt-6">
-                        <h4 className="font-semibold mb-2">Peak Hours</h4>
-                        {currentVisualization.peak_hours && Object.entries(currentVisualization.peak_hours).map(([category, time]) => (
-                            <div key={category} className="flex items-center mb-1">
-                            <span
-                                className="w-3 h-3 rounded-full mr-2"
-                                style={{ backgroundColor: COLORS[currentVisualization.categories?.indexOf(category) % COLORS.length] }}
-                            />
-                                <span className="text-sm">{category}: {time}</span>
-                            </div>
-                        ))}
-                        <div className="mt-4 space-y-1">
-                            {currentVisualization.insights?.map((insight, idx) => (
-                                <p key={idx} className="text-sm text-gray-600">• {insight}</p>
-                            ))}
+                                닫기
+                            </button>
                         </div>
                     </div>
                 </div>
             );
         }
 
-        return null;
+        return (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">{currentVisualization.title || 'QuickSight Dashboard'}</h3>
+                    <button
+                        onClick={() => window.open(currentVisualization.url, '_blank')}
+                        className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                        </svg>
+                        <span>새 창에서 열기</span>
+                    </button>
+                </div>
+                <div className="flex-1 relative">
+                    {iframeError ? (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded border border-gray-200">
+                            <div className="text-center">
+                                <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                <p className="text-gray-600 mb-2">대시보드를 로드할 수 없습니다</p>
+                                <p className="text-sm text-gray-500 mb-4">보안 정책으로 인해 iframe에서 표시할 수 없습니다.</p>
+                                <button
+                                    onClick={() => window.open(currentVisualization.url, '_blank')}
+                                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                                >
+                                    새 창에서 열기
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <iframe
+                                src={currentVisualization.url}
+                                className="w-full h-full rounded border border-gray-200"
+                                title={currentVisualization.title || 'QuickSight Dashboard'}
+                                onError={() => {
+                                    console.error('iframe load error');
+                                    setIframeError(true);
+                                }}
+                                onLoad={() => {
+                                    console.log('iframe loaded successfully');
+                                    setIframeError(false);
+                                }}
+                                referrerPolicy="no-referrer-when-downgrade"
+                            />
+                            <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 px-2 py-1 rounded text-xs text-gray-600 shadow-sm">
+                                QuickSight 대시보드가 로드되었습니다
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
     };
-
-    // KickSightApp.tsx의 완전한 renderSupervisorResponse 함수
 
     const renderSupervisorResponse = (content: SupervisorAgentResponse) => {
         const hasDBResponse = content.query_id || content.query;
@@ -425,7 +320,14 @@ const KickSightApp: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         if (content.chart_url) {
-                                            // QuickSight iframe 응답 객체 생성
+                                            if (!isValidUrl(content.chart_url)) {
+                                                setNotificationMessage('오류');
+                                                setNotificationDescription('유효하지 않은 차트 URL입니다.');
+                                                setShowNotification(true);
+                                                setTimeout(() => setShowNotification(false), 3000);
+                                                return;
+                                            }
+
                                             const iframeResponse: QuickSightIFrameResponse = {
                                                 type: 'quicksight_iframe',
                                                 url: content.chart_url,
@@ -433,12 +335,7 @@ const KickSightApp: React.FC = () => {
                                             };
                                             setCurrentVisualization(iframeResponse);
                                             setShowVisualization(true);
-                                        } else {
-                                            console.error("Chart URL is undefined for SupervisorAgentResponse.");
-                                            setNotificationMessage('오류');
-                                            setNotificationDescription('차트 URL이 제공되지 않았습니다.');
-                                            setShowNotification(true);
-                                            setTimeout(() => setShowNotification(false), 3000);
+                                            setIframeError(false);
                                         }
                                     }}
                                     className="flex items-center space-x-1 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
@@ -469,9 +366,6 @@ const KickSightApp: React.FC = () => {
             );
         }
 
-// KickSightApp.tsx의 renderMessage 함수 내 bot-reasoning 부분만 발췌
-// 이 부분을 기존 코드의 해당 부분과 교체하세요
-
         if (message.type === 'bot-reasoning') {
             return (
                 <div className="flex justify-start mb-4">
@@ -492,7 +386,6 @@ const KickSightApp: React.FC = () => {
                                     </div>
                                     <LoadingIndicator
                                         message={message.content as string || currentReasoningStep}
-                                        Icon={currentStepIcon || undefined}
                                     />
                                 </div>
                             </div>
@@ -513,109 +406,20 @@ const KickSightApp: React.FC = () => {
                             <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                 {typeof message.content === 'object' ? (
                                     <div>
-                                        {isVOCAnalysis(message.content) && (
-                                            <>
-                                                <h4 className="font-semibold mb-2">{message.content.analysis_type.replace(/_/g, ' ')}</h4>
-                                                <p className="text-sm mb-2">기간: {message.content.period}</p>
-                                                <p className="text-sm mb-2">전체 VOC 건수: {message.content.total_voc_count?.toLocaleString()}건</p>
-                                                <div className="mb-3">
-                                                    <p className="font-medium">주요 카테고리: <span className="font-normal">{message.content.categories['주요 카테고리']?.join(', ')}</span></p>
-                                                    <div className="mt-2 space-y-1">
-                                                        {message.content.categories['분석 결과'] && Object.entries(message.content.categories['분석 결과']).map(([key, value]) => (
-                                                            <p key={key} className="text-sm">• {key}: {value}</p>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <div className="mb-3">
-                                                    <p className="font-medium mb-1">인사이트:</p>
-                                                    <div className="space-y-1">
-                                                        {message.content.insights?.map((insight: string, idx: number) => (
-                                                            <p key={idx} className="text-sm">• {insight}</p>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <div className="mt-2 p-3 bg-yellow-50 rounded border border-yellow-200">
-                                                    <p className="text-sm"><span className="font-medium">추천사항:</span> {message.content.recommendation}</p>
-                                                </div>
-                                            </>
-                                        )}
-                                        {isLineChart(message.content) && (
-                                            <>
-                                                <p className="text-sm mb-2">기간: {message.content.period}</p>
-                                                <p className="font-medium">카테고리: <span className="font-normal">{message.content.categories?.join(', ')}</span></p>
-                                                <div className="mb-3">
-                                                    <p className="font-medium mb-1">인사이트:</p>
-                                                    <div className="space-y-1">
-                                                        {message.content.insights?.map((insight: string, idx: number) => (
-                                                            <p key={idx} className="text-sm">• {insight}</p>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-                                        {isPieChart(message.content) && (
-                                            <>
-                                                <h4 className="font-semibold mb-2">{message.content.title}</h4>
-                                                <p className="text-sm mb-2">전체 건수: {message.content.total_count?.toLocaleString()}건</p>
-                                                <div className="mb-3">
-                                                    <p className="font-medium mb-1">인사이트:</p>
-                                                    <div className="space-y-1">
-                                                        {message.content.insights?.map((insight: string, idx: number) => (
-                                                            <p key={idx} className="text-sm">• {insight}</p>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-                                        {(isPieChart(message.content) || isLineChart(message.content) || isVOCTable(message.content)) && (
-                                            <div className="mt-3 p-3 bg-blue-50 rounded border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
-                                                 onClick={() => {
-                                                     setCurrentVisualization(message.content as AnalysisResponse);
-                                                     setShowVisualization(true);
-                                                 }}>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-2">
-                                                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                                        </svg>
-                                                        <span className="text-sm font-medium text-blue-700">
-                                            {isVOCTable(message.content) ? '테이블 데이터 보기' :
-                                                isPieChart(message.content) ? '원형 차트 보기' :
-                                                    '라인 차트 보기'}
-                                        </span>
-                                                    </div>
-                                                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                        )}
+                                        {isSupervisorAgentResponse(message.content) && renderSupervisorResponse(message.content)}
                                         {isError(message.content) && (
-                                            <div className="text-red-600 bg-red-50 border border-red-200 rounded p-3 mt-2">
+                                            <div className="text-red-600 bg-red-50 border border-red-200 rounded p-3">
                                                 <p className="font-semibold">오류 발생:</p>
                                                 <p>{message.content.message || JSON.stringify(message.content)}</p>
                                             </div>
                                         )}
-                                        {isSupervisorAgentResponse(message.content) && renderSupervisorResponse(message.content)}
                                     </div>
                                 ) : (
-                                    <p>{message.content}</p>
+                                    <p className="text-gray-900">{message.content}</p>
                                 )}
-                                <div className="mt-3 flex justify-end space-x-2">
-                                    {(typeof message.content === 'object' && (isPieChart(message.content) || isLineChart(message.content) || isVOCTable(message.content))) && (
-                                        <button
-                                            onClick={() => {
-                                                setCurrentVisualization(message.content as AnalysisResponse);
-                                                setShowVisualization(true);
-                                            }}
-                                            className="flex items-center space-x-1 px-3 py-1 rounded-md transition-colors text-blue-500 hover:bg-blue-50"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                            </svg>
-                                            <span className="text-sm">차트 보기</span>
-                                        </button>
-                                    )}
+
+                                {/* 좋아요 버튼 */}
+                                <div className="mt-3 flex justify-end">
                                     <button
                                         onClick={() => handleLike(message.id)}
                                         disabled={likedMessages.has(message.id)}
@@ -656,6 +460,9 @@ const KickSightApp: React.FC = () => {
                             <MenuIcon />
                         </button>
                         <h1 className="text-2xl font-bold text-gray-900">Kick-sight</h1>
+                        <span className="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full font-medium">
+                            Supervisor Agent
+                        </span>
                         {sessionId && (
                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                 세션: {sessionId.slice(0, 8)}...
@@ -663,14 +470,6 @@ const KickSightApp: React.FC = () => {
                         )}
                     </div>
                     <div className="flex items-center space-x-2">
-                        <select
-                            value={selectedMode}
-                            onChange={(e) => handleModeChange(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="QuickSight Mocking Agent">QuickSight Mocking Agent</option>
-                            <option value="Supervisor Agent">Supervisor Agent</option>
-                        </select>
                         <button
                             onClick={handleNewConversation}
                             className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
@@ -678,33 +477,6 @@ const KickSightApp: React.FC = () => {
                             <PlusIcon />
                             <span>새 대화</span>
                         </button>
-                        <div className="relative">
-                            <button
-                                onClick={() => setDropdownOpen(!dropdownOpen)}
-                                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
-                            >
-                                <SettingsIcon />
-                            </button>
-                            {dropdownOpen && (
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                                    <button className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2">
-                                        <UserIcon />
-                                        <span>프로필</span>
-                                    </button>
-                                    <button className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2">
-                                        <SettingsIcon />
-                                        <span>설정</span>
-                                    </button>
-                                    <button
-                                        onClick={clearSession}
-                                        className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center space-x-2 text-red-600"
-                                    >
-                                        <CloseIcon />
-                                        <span>세션 초기화</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </div>
             </header>
@@ -722,7 +494,6 @@ const KickSightApp: React.FC = () => {
                                         setActiveConversation(conv.id);
                                         setShowVisualization(false);
                                         setCurrentVisualization(null);
-                                        // 해당 대화의 메시지로 업데이트
                                         setMessages(conv.messages);
                                     }}
                                     className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between ${
@@ -753,19 +524,19 @@ const KickSightApp: React.FC = () => {
                                                 <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                                     <RobotIcon />
                                                 </div>
-                                                <p className="text-gray-500 mb-6">대화를 시작해보세요! 아래 예시 질문을 참고하세요.</p>
+                                                <p className="text-gray-500 mb-6">Supervisor Agent와 대화를 시작해보세요!</p>
                                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                                                     <p className="text-sm text-blue-700">
-                                                        현재 모드: <span className="font-semibold">{selectedMode}</span>
+                                                        DB Agent와 QuickSight Agent를 통합하여 분석을 수행합니다.
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-left bg-gray-50 rounded-lg p-4">
                                                 <h3 className="font-semibold mb-2">예시 질문:</h3>
-                                                <p className="text-sm mb-1">1. 2025년도 1월 VOC 데이터 분석 결과를 보여줘</p>
-                                                <p className="text-sm mb-1">2. VOC 데이터를 테이블로 보여줘</p>
-                                                <p className="text-sm mb-1">3. 카테고리별 분포를 원형 차트로 보여줘</p>
-                                                <p className="text-sm">4. 시간대별 피드백 추이를 보여줘</p>
+                                                <p className="text-sm mb-1">• 2025년 1월 VOC 데이터를 분석해줘</p>
+                                                <p className="text-sm mb-1">• 고객 피드백 데이터를 조회해줘</p>
+                                                <p className="text-sm mb-1">• 최근 한 달간 VOC 추이를 보여줘</p>
+                                                <p className="text-sm">• 카테고리별 고객 피드백을 시각화해줘</p>
                                             </div>
                                         </div>
                                     </div>
@@ -788,7 +559,7 @@ const KickSightApp: React.FC = () => {
                                                 handleSendMessage();
                                             }
                                         }}
-                                        placeholder="메시지를 입력하세요..."
+                                        placeholder="Supervisor Agent에게 메시지를 입력하세요..."
                                         className="flex-1 resize-none border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         rows={3}
                                         disabled={isProcessing}
@@ -810,7 +581,7 @@ const KickSightApp: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Visualization Panel */}
+                    {/* QuickSight Visualization Panel */}
                     <AnimatePresence>
                         {showVisualization && (
                             <motion.div
@@ -823,12 +594,15 @@ const KickSightApp: React.FC = () => {
                                 <div className="h-full p-6 pl-3">
                                     <div className="h-full relative">
                                         <button
-                                            onClick={() => setShowVisualization(false)}
+                                            onClick={() => {
+                                                setShowVisualization(false);
+                                                setIframeError(false);
+                                            }}
                                             className="absolute top-2 right-2 z-10 p-1 hover:bg-gray-100 rounded-md transition-colors"
                                         >
                                             <CloseIcon />
                                         </button>
-                                        {renderVisualization()}
+                                        {renderQuickSightVisualization()}
                                     </div>
                                 </div>
                             </motion.div>
@@ -838,6 +612,6 @@ const KickSightApp: React.FC = () => {
             </div>
         </div>
     );
-}
+};
 
 export default KickSightApp;
