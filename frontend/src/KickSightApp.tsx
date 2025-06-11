@@ -25,10 +25,28 @@ import {
 import { useChat } from './hooks/useChat';
 
 const KickSightApp: React.FC = () => {
-    const [conversations, setConversations] = useState<Conversation[]>([
-        { id: 1, title: '새 대화', messages: [] }
-    ]);
-    const [activeConversation, setActiveConversation] = useState(1);
+    // 초기 세션 ID 생성
+    const generateSessionId = () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 로컬 스토리지에서 대화 목록 로드
+    const loadConversations = (): Conversation[] => {
+        const saved = localStorage.getItem('kicksight_conversations');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        // 기본 대화 생성
+        const initialConversation: Conversation = {
+            id: 1,
+            title: '새 대화',
+            messages: [],
+            sessionId: generateSessionId(),
+            createdAt: new Date().toISOString()
+        };
+        return [initialConversation];
+    };
+
+    const [conversations, setConversations] = useState<Conversation[]>(loadConversations());
+    const [activeConversation, setActiveConversation] = useState(conversations[0]?.id || 1);
     const [inputMessage, setInputMessage] = useState('');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [showVisualization, setShowVisualization] = useState(false);
@@ -43,6 +61,12 @@ const KickSightApp: React.FC = () => {
     const [selectedAgent, setSelectedAgent] = useState<string>('');
     const [isLoadingAgents, setIsLoadingAgents] = useState(true);
 
+    // 현재 활성 대화의 세션 ID 가져오기
+    const getCurrentSessionId = () => {
+        const currentConvo = conversations.find(c => c.id === activeConversation);
+        return currentConvo?.sessionId || null;
+    };
+
     // useChat 훅 사용 - Supervisor Agent 전용
     const {
         messages,
@@ -53,9 +77,11 @@ const KickSightApp: React.FC = () => {
         clearSession,
         newSession,
         setMessages,
-        agentsConfig
+        agentsConfig,
+        setSessionId
     } = useChat({
         mode: 'Supervisor Agent',
+        sessionId: getCurrentSessionId(),
         onError: (error: Error) => {
             console.error('Chat error:', error);
             setNotificationMessage('오류가 발생했습니다');
@@ -64,6 +90,21 @@ const KickSightApp: React.FC = () => {
             setTimeout(() => setShowNotification(false), 3000);
         }
     });
+
+    // 대화 목록을 로컬 스토리지에 저장
+    useEffect(() => {
+        localStorage.setItem('kicksight_conversations', JSON.stringify(conversations));
+    }, [conversations]);
+
+    // 대화가 변경될 때 세션 전환
+    useEffect(() => {
+        const currentConvo = conversations.find(c => c.id === activeConversation);
+        if (currentConvo) {
+            setSessionId(currentConvo.sessionId);
+            setMessages(currentConvo.messages);
+            console.log(`Switched to conversation ${activeConversation} with session ${currentConvo.sessionId}`);
+        }
+    }, [activeConversation]);
 
     // 에이전트 설정 로드 및 기본값 설정
     useEffect(() => {
@@ -82,17 +123,34 @@ const KickSightApp: React.FC = () => {
 
     // 백엔드 연결 상태 확인
     useEffect(() => {
-        console.log('Session ID:', sessionId);
+        console.log('Current Session ID:', sessionId);
+        console.log('Active Conversation:', activeConversation);
         console.log('API URL:', import.meta.env.VITE_API_URL || 'http://localhost:8000');
-    }, [sessionId]);
+    }, [sessionId, activeConversation]);
 
-    // 현재 대화 업데이트
+    // 현재 대화 업데이트 (세션 ID 유지 및 제목 자동 업데이트)
     useEffect(() => {
-        setConversations(prev => prev.map(conv =>
-            conv.id === activeConversation
-                ? { ...conv, messages }
-                : conv
-        ));
+        setConversations(prev => prev.map(conv => {
+            if (conv.id === activeConversation) {
+                // 첫 번째 사용자 메시지로 제목 업데이트
+                let title = conv.title;
+                const firstUserMessage = messages.find(m => m.type === 'user');
+                if (firstUserMessage && conv.title.startsWith('새 대화')) {
+                    const messageContent = firstUserMessage.content as string;
+                    title = messageContent.length > 30
+                        ? messageContent.substring(0, 30) + '...'
+                        : messageContent;
+                }
+
+                return {
+                    ...conv,
+                    messages,
+                    sessionId: sessionId || conv.sessionId,
+                    title
+                };
+            }
+            return conv;
+        }));
     }, [messages, activeConversation]);
 
     const currentConvo = conversations.find(c => c.id === activeConversation);
@@ -131,6 +189,27 @@ const KickSightApp: React.FC = () => {
         };
     };
 
+    const handleDeleteConversation = (convId: number) => {
+        if (conversations.length <= 1) {
+            setNotificationMessage('마지막 대화는 삭제할 수 없습니다');
+            setNotificationDescription('새 대화를 만든 후 삭제해주세요.');
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 3000);
+            return;
+        }
+
+        const updatedConversations = conversations.filter(c => c.id !== convId);
+        setConversations(updatedConversations);
+
+        // 삭제한 대화가 현재 활성 대화인 경우
+        if (activeConversation === convId) {
+            const firstConv = updatedConversations[0];
+            setActiveConversation(firstConv.id);
+            setSessionId(firstConv.sessionId);
+            setMessages(firstConv.messages);
+        }
+    };
+
     const handleSendMessage = async () => {
         if (!inputMessage.trim() || isProcessing) return;
 
@@ -138,6 +217,16 @@ const KickSightApp: React.FC = () => {
         if (!agentInfo) {
             setNotificationMessage('에이전트를 선택해주세요');
             setNotificationDescription('메시지를 보내기 전에 에이전트를 선택해야 합니다.');
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 3000);
+            return;
+        }
+
+        // 현재 세션 ID 확인
+        if (!sessionId) {
+            console.error('No session ID available');
+            setNotificationMessage('세션 오류');
+            setNotificationDescription('새 대화를 시작해주세요.');
             setShowNotification(true);
             setTimeout(() => setShowNotification(false), 3000);
             return;
@@ -155,18 +244,28 @@ const KickSightApp: React.FC = () => {
     };
 
     const handleNewConversation = async () => {
-        // 현재 세션 종료
-        await clearSession();
+        // 새로운 세션 ID 생성
+        const newSessionId = generateSessionId();
 
         // 새 대화 생성
-        const newId = Math.max(...conversations.map(c => c.id)) + 1;
-        setConversations([...conversations, { id: newId, title: `새 대화 ${newId}`, messages: [] }]);
+        const newId = Math.max(...conversations.map(c => c.id), 0) + 1;
+        const newConversation: Conversation = {
+            id: newId,
+            title: `새 대화 ${newId}`,
+            messages: [],
+            sessionId: newSessionId,
+            createdAt: new Date().toISOString()
+        };
+
+        setConversations([...conversations, newConversation]);
         setActiveConversation(newId);
         setShowVisualization(false);
         setCurrentVisualization(null);
 
-        // 새 세션 시작
+        // 새 세션으로 전환
         newSession();
+        setSessionId(newSessionId);
+        console.log(`Created new conversation ${newId} with session ${newSessionId}`);
     };
 
     const handleLike = (messageId: number) => {
@@ -571,9 +670,14 @@ const KickSightApp: React.FC = () => {
                         </div>
 
                         {sessionId && (
-                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                세션: {sessionId.slice(0, 8)}...
-                            </span>
+                            <div className="flex items-center space-x-2">
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                    세션: {sessionId.slice(0, 8)}...
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                    대화 #{activeConversation}
+                                </span>
+                            </div>
                         )}
                     </div>
                     <div className="flex items-center space-x-2">
@@ -592,29 +696,92 @@ const KickSightApp: React.FC = () => {
                 {/* Sidebar */}
                 <aside className={`${sidebarCollapsed ? 'w-0' : 'w-64'} bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden`}>
                     <div className="p-4">
-                        <h2 className="text-lg font-semibold text-gray-700 mb-4">대화 이력</h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-gray-700">대화 이력</h2>
+                            <button
+                                onClick={() => {
+                                    if (confirm('모든 대화를 삭제하시겠습니까?')) {
+                                        localStorage.removeItem('kicksight_conversations');
+                                        const newConv: Conversation = {
+                                            id: 1,
+                                            title: '새 대화',
+                                            messages: [],
+                                            sessionId: generateSessionId(),
+                                            createdAt: new Date().toISOString()
+                                        };
+                                        setConversations([newConv]);
+                                        setActiveConversation(1);
+                                        setSessionId(newConv.sessionId);
+                                        setMessages([]);
+                                    }
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700"
+                            >
+                                모두 삭제
+                            </button>
+                        </div>
                         <div className="space-y-2">
                             {conversations.map(conv => (
-                                <button
+                                <div
                                     key={conv.id}
-                                    onClick={() => {
-                                        setActiveConversation(conv.id);
-                                        setShowVisualization(false);
-                                        setCurrentVisualization(null);
-                                        setMessages(conv.messages);
-                                    }}
-                                    className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between ${
+                                    className={`group relative rounded-md transition-colors ${
                                         conv.id === activeConversation
-                                            ? 'bg-blue-50 text-blue-700 border border-blue-300'
+                                            ? 'bg-blue-50 border border-blue-300'
                                             : 'hover:bg-gray-100'
                                     }`}
                                 >
-                                    <span className="truncate">{conv.title}</span>
-                                    <span className="ml-2 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">
-                                        {conv.messages.filter(m => m.type === 'user').length}
-                                    </span>
-                                </button>
+                                    <button
+                                        onClick={() => {
+                                            setActiveConversation(conv.id);
+                                            setShowVisualization(false);
+                                            setCurrentVisualization(null);
+                                            // 대화 전환 시 해당 대화의 세션과 메시지 로드
+                                            setSessionId(conv.sessionId);
+                                            setMessages(conv.messages);
+                                            console.log(`Switching to conversation ${conv.id} with session ${conv.sessionId}`);
+                                        }}
+                                        className="w-full text-left px-3 py-2"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="truncate font-medium">{conv.title}</span>
+                                            <span className="ml-2 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">
+                                                {conv.messages.filter(m => m.type === 'user').length}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            세션: {conv.sessionId.slice(0, 8)}...
+                                        </div>
+                                        {conv.createdAt && (
+                                            <div className="text-xs text-gray-400">
+                                                {new Date(conv.createdAt).toLocaleString('ko-KR', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </div>
+                                        )}
+                                    </button>
+                                    {conversations.length > 1 && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteConversation(conv.id);
+                                            }}
+                                            className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded"
+                                        >
+                                            <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
                             ))}
+                            {conversations.length === 0 && (
+                                <p className="text-gray-500 text-sm text-center py-4">
+                                    대화가 없습니다. 새 대화를 시작하세요.
+                                </p>
+                            )}
                         </div>
                     </div>
                 </aside>

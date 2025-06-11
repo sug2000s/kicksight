@@ -10,6 +10,8 @@ export interface Conversation {
     id: number;
     title: string;
     messages: Message[];
+    sessionId: string;  // 각 대화마다 고유한 세션 ID 추가
+    createdAt: string;  // 생성 시간 추가
 }
 
 // Supervisor Agent 응답 타입
@@ -83,4 +85,9 @@ export interface AgentInfo {
 
 export interface AgentsConfigResponse {
     agents: AgentInfo[];
+}
+
+// 로컬 스토리지에 저장할 세션 매핑 타입
+export interface SessionMapping {
+    [conversationId: number]: string;
 }

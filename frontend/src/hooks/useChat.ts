@@ -42,15 +42,16 @@ export const useChat = (options: UseChatOptions = {}) => {
 
     // 세션 ID를 로컬 스토리지에서 관리
     useEffect(() => {
-        if (!sessionId) {
-            const storedSessionId = localStorage.getItem('kicksight_session_id');
-            if (storedSessionId) {
-                setSessionId(storedSessionId);
-                // 기존 세션 메시지 로드
-                loadSession(storedSessionId);
-            }
-        } else {
-            localStorage.setItem('kicksight_session_id', sessionId);
+        // options.sessionId가 있으면 우선 사용
+        if (options.sessionId && options.sessionId !== sessionId) {
+            setSessionId(options.sessionId);
+        }
+    }, [options.sessionId]);
+
+    useEffect(() => {
+        if (sessionId) {
+            // 현재 세션 ID를 로컬 스토리지에 저장 (백업용)
+            localStorage.setItem('kicksight_current_session_id', sessionId);
         }
     }, [sessionId]);
 
@@ -316,7 +317,8 @@ export const useChat = (options: UseChatOptions = {}) => {
         if (sessionId) {
             try {
                 await apiService.clearSession(sessionId);
-                localStorage.removeItem('kicksight_session_id');
+                // 현재 세션만 로컬 스토리지에서 제거
+                localStorage.removeItem('kicksight_current_session_id');
                 setSessionId(null);
                 setMessages([]);
                 setStreamingSteps([]);
@@ -327,10 +329,10 @@ export const useChat = (options: UseChatOptions = {}) => {
     }, [sessionId]);
 
     const newSession = useCallback(() => {
-        const newSessionId = `session_${Date.now()}`;
-        setSessionId(newSessionId);
+        // 기존 세션은 그대로 두고 메시지만 초기화
         setMessages([]);
         setStreamingSteps([]);
+        console.log('Session cleared, ready for new messages');
     }, []);
 
     return {
@@ -343,6 +345,7 @@ export const useChat = (options: UseChatOptions = {}) => {
         clearSession,
         newSession,
         setMessages,
+        setSessionId,  // setSessionId 추가
         streamingSteps,
         agentsConfig
     };
