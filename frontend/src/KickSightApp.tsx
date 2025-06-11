@@ -291,90 +291,38 @@ const KickSightApp: React.FC = () => {
         }
     };
 
+    // ─── src/components/KickSightApp.tsx 중 일부 ───
     const renderQuickSightVisualization = () => {
         if (!currentVisualization) return null;
 
-        if (!isValidUrl(currentVisualization.url)) {
-            return (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-red-600">오류</h3>
-                    </div>
-                    <div className="flex-1 flex items-center justify-center">
-                        <div className="text-center">
-                            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <p className="text-gray-600 mb-2">유효하지 않은 URL입니다.</p>
-                            <p className="text-sm text-gray-500">QuickSight URL을 확인해주세요.</p>
-                            <button
-                                onClick={() => {
-                                    setShowVisualization(false);
-                                    setCurrentVisualization(null);
-                                }}
-                                className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
-                            >
-                                닫기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
         return (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex flex-col">
+                {/* ── 헤더 ── */}
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">{currentVisualization.title || 'QuickSight Dashboard'}</h3>
+                    <h3 className="text-lg font-semibold">
+                        {currentVisualization.title || 'QuickSight Dashboard'}
+                    </h3>
                     <button
                         onClick={() => window.open(currentVisualization.url, '_blank')}
                         className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
                     >
+                        {/* 아이콘 */}
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4M17 7h-4" />
                         </svg>
                         <span>새 창에서 열기</span>
                     </button>
                 </div>
-                <div className="flex-1 relative">
-                    {iframeError ? (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded border border-gray-200">
-                            <div className="text-center">
-                                <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
-                                <p className="text-gray-600 mb-2">대시보드를 로드할 수 없습니다</p>
-                                <p className="text-sm text-gray-500 mb-4">보안 정책으로 인해 iframe에서 표시할 수 없습니다.</p>
-                                <button
-                                    onClick={() => window.open(currentVisualization.url, '_blank')}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                                >
-                                    새 창에서 열기
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            <iframe
-                                src={currentVisualization.url}
-                                className="w-full h-full rounded border border-gray-200"
-                                title={currentVisualization.title || 'QuickSight Dashboard'}
-                                onError={() => {
-                                    console.error('iframe load error');
-                                    setIframeError(true);
-                                }}
-                                onLoad={() => {
-                                    console.log('iframe loaded successfully');
-                                    setIframeError(false);
-                                }}
-                                referrerPolicy="no-referrer-when-downgrade"
-                            />
-                            <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 px-2 py-1 rounded text-xs text-gray-600 shadow-sm">
-                                QuickSight 대시보드가 로드되었습니다
-                            </div>
-                        </>
-                    )}
-                </div>
+
+                {/* ── 대시보드 ── */}
+                <iframe
+                    src={currentVisualization.url}
+                    title={currentVisualization.title || 'QuickSight Dashboard'}
+                    className="flex-1 w-full rounded border border-gray-200"
+                    style={{ minHeight: 0 }}
+                    referrerPolicy="no-referrer-when-downgrade"
+                />
             </div>
         );
     };
