@@ -16,7 +16,7 @@ class Settings:
 
     # Bedrock Agent 설정
     supervisor_agent_id: str = os.getenv("BEDROCK_SUPERVISOR_AGENT_ID", "UXEVYB5QYQ")
-    supervisor_agent_alias_id: str = os.getenv("BEDROCK_SUPERVISOR_AGENT_ALIAS_ID", "ETXIYBXOSO")
+    supervisor_agent_alias_id: str = os.getenv("BEDROCK_SUPERVISOR_AGENT_ALIAS_ID")
     quicksight_agent_id: Optional[str] = os.getenv("QUICKSIGHT_AGENT_ID")
     quicksight_agent_alias_id: Optional[str] = os.getenv("QUICKSIGHT_AGENT_ALIAS_ID")
 
